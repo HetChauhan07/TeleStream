@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 30000,
 });
 
@@ -46,7 +46,8 @@ export async function getMediaById(id) {
 // ─── Streaming ──────────────────────────────────────
 export function getStreamUrl(id) {
   const token = localStorage.getItem('token');
-  return `/api/stream/${id}?token=${token}`;
+  const base = import.meta.env.VITE_API_URL || '/api';
+  return `${base}/stream/${id}?token=${token}`;
 }
 
 // ─── Progress ───────────────────────────────────────
