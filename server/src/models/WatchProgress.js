@@ -1,12 +1,17 @@
 import mongoose from 'mongoose';
 
 const watchProgressSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
   mediaId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Media',
     required: true,
-    index: true,
-    unique: true
+    index: true
   },
   currentTime: { type: Number, default: 0 },     // seconds
   duration: { type: Number, default: 0 },          // seconds
@@ -14,6 +19,9 @@ const watchProgressSchema = new mongoose.Schema({
   completed: { type: Boolean, default: false },
   updatedAt: { type: Date, default: Date.now }
 });
+
+// Ensure a user only has one progress record per media
+watchProgressSchema.index({ userId: 1, mediaId: 1 }, { unique: true });
 
 // Auto-update percentage and updatedAt on save
 watchProgressSchema.pre('save', function (next) {

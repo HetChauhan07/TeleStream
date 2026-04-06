@@ -11,6 +11,7 @@ const router = Router();
 router.get('/continue', async (req, res) => {
   try {
     const items = await WatchProgress.find({
+      userId: req.user.id,
       completed: false,
       currentTime: { $gt: 0 },
     })
@@ -47,6 +48,7 @@ router.get('/continue', async (req, res) => {
 router.get('/:mediaId', async (req, res) => {
   try {
     const progress = await WatchProgress.findOne({
+      userId: req.user.id,
       mediaId: req.params.mediaId,
     }).lean();
 
@@ -66,6 +68,7 @@ router.put('/:mediaId', async (req, res) => {
     const { currentTime, duration } = req.body;
 
     let progress = await WatchProgress.findOne({
+      userId: req.user.id,
       mediaId: req.params.mediaId,
     });
 
@@ -75,6 +78,7 @@ router.put('/:mediaId', async (req, res) => {
       await progress.save(); // triggers pre-save hook for percentage
     } else {
       progress = await WatchProgress.create({
+        userId: req.user.id,
         mediaId: req.params.mediaId,
         currentTime,
         duration,
