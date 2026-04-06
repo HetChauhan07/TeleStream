@@ -18,7 +18,8 @@ export default function AdminPage() {
 
   async function fetchUsers() {
     try {
-      const res = await fetch('/api/auth/users', {
+      const baseUrl = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
+      const res = await fetch(`${baseUrl}/auth/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -37,7 +38,8 @@ export default function AdminPage() {
     setSuccess('');
 
     try {
-      const res = await fetch('/api/auth/register', {
+      const baseUrl = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
+      const res = await fetch(`${baseUrl}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,7 +72,8 @@ export default function AdminPage() {
     if (!window.confirm(`Delete user "${uname}"?`)) return;
 
     try {
-      const res = await fetch(`/api/auth/users/${userId}`, {
+      const baseUrl = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
+      const res = await fetch(`${baseUrl}/auth/users/${userId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

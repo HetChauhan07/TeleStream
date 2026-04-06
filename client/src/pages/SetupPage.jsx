@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_BASE = '/api/auth';
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/auth` : 'https://telestream-jgee.onrender.com/api/auth';
 
 export default function SetupPage({ onAuthenticated }) {
   const [step, setStep] = useState('phone'); // phone | otp | 2fa | success
