@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getMediaById, getStreamUrl, getProgress, updateProgress } from '../api/client';
+import { getMediaById, getStreamUrl } from '../api/client';
 import mpegts from 'mpegts.js';
 
 export default function PlayerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const videoRef = useRef(null);
-  const saveTimerRef = useRef(null);
+
 
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,16 +16,8 @@ export default function PlayerPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [movieData, progressData] = await Promise.all([
-          getMediaById(id),
-          getProgress(id),
-        ]);
+        const movieData = await getMediaById(id);
         setMovie(movieData);
-
-        // Set initial time after video loads
-        if (videoRef.current && progressData.currentTime > 0) {
-          videoRef.current.currentTime = progressData.currentTime;
-        }
       } catch (err) {
         console.error('Failed to init player:', err);
       } finally {
@@ -35,39 +27,7 @@ export default function PlayerPage() {
     init();
   }, [id]);
 
-  // Save progress periodically
-  const saveProgress = useCallback(async () => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    if (video.currentTime > 0 && video.duration > 0) {
-      try {
-        await updateProgress(id, video.currentTime, video.duration);
-      } catch (err) {
-        // Silently fail
-      }
-    }
-  }, [id]);
 
-  // Auto-save every 10 seconds
-  useEffect(() => {
-    saveTimerRef.current = setInterval(saveProgress, 10000);
-    return () => {
-      saveProgress(); // Save on unmount
-      clearInterval(saveTimerRef.current);
-    };
-  }, [saveProgress]);
-
-  // Restore position when video metadata loads
-  const handleLoadedMetadata = async () => {
-    try {
-      const progress = await getProgress(id);
-      if (progress.currentTime > 0 && videoRef.current) {
-        videoRef.current.currentTime = progress.currentTime;
-      }
-    } catch (err) {
-      // Ignore
-    }
-  };
 
   // Setup mpegts.js if needed
   useEffect(() => {
@@ -98,12 +58,7 @@ export default function PlayerPage() {
     };
   }, [movie, id]);
 
-  // Save progress on pause/end
-  const handlePause = () => saveProgress();
   const handleEnded = () => {
-    if (videoRef.current) {
-      updateProgress(id, videoRef.current.duration, videoRef.current.duration).catch(() => {});
-    }
 
     // Auto-play next part if it exists
     if (movie && movie.parts && movie.parts.length > 0) {
@@ -117,7 +72,6 @@ export default function PlayerPage() {
   };
 
   const handleBack = () => {
-    saveProgress();
     
     // Determine the base movie page URL to go back to instead of going back to the individual part page.
     // If it's a part, it will go back to the single movie container for that TMDB ID.
@@ -172,8 +126,6 @@ export default function PlayerPage() {
         src={isMpegTS ? undefined : getStreamUrl(id)}
         controls
         autoPlay
-        onLoadedMetadata={handleLoadedMetadata}
-        onPause={handlePause}
         onEnded={handleEnded}
       >
         {movie?.subtitles?.map((sub, i) => (

@@ -1,25 +1,21 @@
 import { useState, useEffect } from 'react';
-import { getLibrary, getContinueWatching } from '../api/client';
+import { getLibrary } from '../api/client';
 import HeroBanner from '../components/HeroBanner';
 import MediaGrid from '../components/MediaGrid';
 import { SkeletonRow, EmptyState } from '../components/Loader';
 
 export default function HomePage() {
   const [movies, setMovies] = useState([]);
-  const [continueWatching, setContinueWatching] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [heroMovie, setHeroMovie] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [library, continuing] = await Promise.all([
-          getLibrary({ sort: 'addedAt', order: 'desc' }),
-          getContinueWatching(),
-        ]);
+        const library = await getLibrary({ sort: 'addedAt', order: 'desc' });
 
         setMovies(library);
-        setContinueWatching(continuing);
 
         // Pick a random movie with a backdrop for the hero
         const candidates = library.filter((m) => m.backdropPath);
@@ -101,17 +97,7 @@ export default function HomePage() {
     <div id="home-page">
       <HeroBanner movie={heroMovie} />
 
-      {/* Continue Watching */}
-      {continueWatching.length > 0 && (
-        <section className="section">
-          <div className="section__header">
-            <h2 className="section__title">
-              <span>Continue</span> Watching
-            </h2>
-          </div>
-          <MediaGrid movies={continueWatching} layout="row" />
-        </section>
-      )}
+
 
       {/* Recently Added */}
       {recentlyAdded.length > 0 && (
