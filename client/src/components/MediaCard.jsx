@@ -7,8 +7,7 @@ export default function MediaCard({ movie, index = 0 }) {
     navigate(`/movie/${movie._id}`);
   };
 
-  const progress = movie.watchProgress;
-  const progressPercent = progress ? progress.percentage : 0;
+
 
   return (
     <div
@@ -37,14 +36,6 @@ export default function MediaCard({ movie, index = 0 }) {
           </div>
         </div>
 
-        {progressPercent > 0 && progressPercent < 95 && (
-          <div className="media-card__progress">
-            <div
-              className="media-card__progress-bar"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        )}
       </div>
 
       <div className="media-card__info">

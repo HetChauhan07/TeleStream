@@ -52,8 +52,6 @@ export default function MoviePage() {
   }
 
   const backdrop = movie.backdropPath || movie.posterPath;
-  const progress = movie.watchProgress;
-  const hasProgress = progress && progress.currentTime > 0 && !progress.completed;
 
   // Format time helper
   const formatTime = (seconds) => {
@@ -76,43 +74,18 @@ export default function MoviePage() {
   const getTopAction = () => {
     // Single movie
     if (movie.type !== 'tv' && (!movie.parts || movie.parts.length === 0)) {
-      return { label: hasProgress ? `Resume from ${formatTime(progress.currentTime)}` : 'Play', url: `/play/${movie._id}` };
+      return { label: 'Play', url: `/play/${movie._id}` };
     }
 
     // For Multi-part Movies
     if (movie.type !== 'tv' && movie.parts && movie.parts.length > 0) {
-      let partToPlay = movie.parts[0];
-      const resumePart = movie.parts.find(p => p.watchProgress && p.watchProgress.currentTime > 0 && !p.watchProgress.completed);
-      if (resumePart) {
-        partToPlay = resumePart;
-        return { label: `Resume Part ${resumePart.partNumber}`, url: `/play/${resumePart._id}` };
-      }
-      const unstartedPart = movie.parts.find(p => !p.watchProgress || p.watchProgress.currentTime === 0);
-      if (unstartedPart) partToPlay = unstartedPart;
-      
-      return { label: `Play Part ${partToPlay.partNumber}`, url: `/play/${partToPlay._id}` };
+      return { label: `Play Part ${movie.parts[0].partNumber}`, url: `/play/${movie.parts[0]._id}` };
     }
 
-    // For TV Series: Default to the first episode or resume first unwatched episode
+    // For TV Series: Default to the first episode
     if (!movie.episodes || movie.episodes.length === 0) return { label: 'Play', url: `/play/${movie._id}` };
 
-    let episodeToPlay = movie.episodes[0];
-    
-    // Find the furthest episode that has progress but isn't completed
-    const resumeEp = movie.episodes.find(e => e.watchProgress && e.watchProgress.currentTime > 0 && !e.watchProgress.completed);
-    if (resumeEp) {
-      episodeToPlay = resumeEp;
-      return { 
-        label: `Resume S${resumeEp.seasonNumber} E${resumeEp.episodeNumber}`, 
-        url: `/play/${resumeEp._id}` 
-      };
-    }
-
-    // Try finding the first un-started episode
-    const unstartedEp = movie.episodes.find(e => !e.watchProgress || e.watchProgress.currentTime === 0);
-    if (unstartedEp) {
-      episodeToPlay = unstartedEp;
-    }
+    const episodeToPlay = movie.episodes[0];
     
     return { 
       label: `Play S${episodeToPlay.seasonNumber} E${episodeToPlay.episodeNumber}`, 
@@ -257,15 +230,7 @@ export default function MoviePage() {
                         </svg>
                       </div>
 
-                      {/* Progress Bar */}
-                      {part.watchProgress && part.watchProgress.currentTime > 0 && (
-                        <div className="episode-card__progress">
-                          <div 
-                            className="episode-card__progress-bar" 
-                            style={{ width: `${(part.watchProgress.currentTime / part.watchProgress.duration) * 100}%` }}
-                          />
-                        </div>
-                      )}
+
                     </div>
                     <div className="episode-card__details">
                       <div className="episode-card__header">
@@ -317,15 +282,7 @@ export default function MoviePage() {
                         </svg>
                       </div>
 
-                      {/* Progress Bar */}
-                      {ep.watchProgress && ep.watchProgress.currentTime > 0 && (
-                        <div className="episode-card__progress">
-                          <div 
-                            className="episode-card__progress-bar" 
-                            style={{ width: `${(ep.watchProgress.currentTime / ep.watchProgress.duration) * 100}%` }}
-                          />
-                        </div>
-                      )}
+
                     </div>
                     <div className="episode-card__details">
                       <div className="episode-card__header">
