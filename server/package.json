@@ -1,0 +1,26 @@
+{
+  "name": "telestream-server",
+  "version": "1.0.0",
+  "description": "Telegram-backed media streaming proxy server",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "axios": "^1.7.0",
+    "bcryptjs": "^3.0.3",
+    "big-integer": "^1.6.52",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "input": "^1.0.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.5.0",
+    "multer": "^2.1.1",
+    "telegram": "^2.22.0"
+  }
+}
