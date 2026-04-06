@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api',
   timeout: 30000,
 });
 
@@ -46,7 +46,7 @@ export async function getMediaById(id) {
 // ─── Streaming ──────────────────────────────────────
 export function getStreamUrl(id) {
   const token = localStorage.getItem('token');
-  const base = import.meta.env.VITE_API_URL || '/api';
+  const base = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
   return `${base}/stream/${id}?token=${token}`;
 }
 
