@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
@@ -14,18 +13,6 @@ export default defineConfig({
         global: true,
         process: true,
       },
-    }),
-    VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.js',
-      injectManifest: {
-        injectionPoint: undefined
-      },
-      devOptions: {
-        enabled: true,
-        type: 'module',
-      }
     })
   ],
   server: {
