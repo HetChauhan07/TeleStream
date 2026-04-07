@@ -44,10 +44,22 @@ export async function getMediaById(id) {
 }
 
 // ─── Streaming ──────────────────────────────────────
-export function getStreamUrl(id) {
+export function getStreamUrl(id, options = {}) {
   const token = localStorage.getItem('token');
   const base = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
-  return `${base}/stream/${id}?token=${token}`;
+  let url = `${base}/stream/${id}?token=${token}`;
+  
+  if (options.quality && options.quality !== 'original' && options.quality !== 'Auto') {
+    url += `&quality=${options.quality}`;
+  }
+  if (options.start) {
+    url += `&start=${options.start}`;
+  }
+  if (options.download) {
+    url += `&download=true`;
+  }
+  
+  return url;
 }
 
 // ─── Progress ───────────────────────────────────────

@@ -76,30 +76,59 @@ export async function streamMedia(media, req, res) {
       return await serveSubtitle(client, document, media.fileName, res);
     }
 
-    // ─── Native vs Transcode Detection ───
+    // ─── Query Parameters ───
     const isRaw = req.query && req.query.raw === 'true';
-    const needsTranscode = !SUPPORTED_NATIVE_MIMES.includes(mimeType) && media.type !== 'subtitle' && !fileNameIsSub(media.fileName);
+    const quality = req.query.quality; // e.g., '1080', '720', '480', 'original'
+    const startOffset = req.query.start; // in seconds
+    const isDownload = req.query.download === 'true';
+
+    // ─── Native vs Transcode Detection ───
+    let needsTranscode = !SUPPORTED_NATIVE_MIMES.includes(mimeType) && media.type !== 'subtitle' && !fileNameIsSub(media.fileName);
+    
+    // Force transcode if a specific quality is requested
+    if (quality && quality !== 'original' && media.type !== 'subtitle') {
+      needsTranscode = true;
+    }
 
     if (needsTranscode && !isRaw) {
-      console.log(`🎬 On-the-fly Transcoding required for format: ${mimeType}`);
+      console.log(`🎬 On-the-fly Transcoding required for format: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}`);
       
       const serverPort = process.env.PORT || 8000;
       // Loopback URL. This allows ffmpeg to execute HTTP 206 Range requests to find the Moov atom instantly.
       const rawUrl = `http://127.0.0.1:${serverPort}${req.originalUrl}${req.originalUrl.includes('?') ? '&' : '?'}raw=true`;
 
-      res.writeHead(200, {
+      const headers = {
         'Content-Type': 'video/mp4',
         'Transfer-Encoding': 'chunked',
         'Access-Control-Allow-Origin': '*'
-      });
+      };
 
-      const command = ffmpeg(rawUrl)
-        .outputOptions([
-          '-preset ultrafast',
-          '-movflags frag_keyframe+empty_moov',
-          '-c:v libx264', // Convert HEVC explicitly so Chrome can stream it
-          '-c:a aac',
-        ])
+      if (isDownload) {
+        headers['Content-Disposition'] = `attachment; filename="${media.fileName || 'video.mp4'}"`;
+      }
+
+      res.writeHead(200, headers);
+
+      const command = ffmpeg(rawUrl);
+
+      // Add time offset logic
+      if (startOffset) {
+        command.inputOptions([`-ss ${startOffset}`]);
+      }
+
+      const outputOptions = [
+        '-preset ultrafast',
+        '-movflags frag_keyframe+empty_moov',
+        '-c:v libx264', // Convert HEVC explicitly so Chrome can stream it
+        '-c:a aac',
+      ];
+
+      // Add scaler if quality is reduced
+      if (quality && quality !== 'original') {
+        outputOptions.push(`-vf scale=-2:${quality}`);
+      }
+
+      command.outputOptions(outputOptions)
         .toFormat('mp4')
         .on('error', (err) => {
           if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) {
@@ -120,13 +149,19 @@ export async function streamMedia(media, req, res) {
     // ─── Parse Range Header ───────────────────────────
     const range = req.headers.range;
 
+    const nativeHeaders = {
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+    };
+    
+    if (isDownload) {
+      nativeHeaders['Content-Disposition'] = `attachment; filename="${media.fileName || 'video'}"`;
+    }
+
     if (!range) {
       // No range requested — send full file (200)
-      res.writeHead(200, {
-        'Content-Type': mimeType,
-        'Content-Length': fileSize,
-        'Accept-Ranges': 'bytes',
-      });
+      nativeHeaders['Content-Length'] = fileSize;
+      res.writeHead(200, nativeHeaders);
 
       const iter = client.iterDownload({
         file: new Api.InputDocumentFileLocation({
@@ -166,12 +201,10 @@ export async function streamMedia(media, req, res) {
     const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 5 * 1024 * 1024 - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunkSize,
-      'Content-Type': mimeType,
-    });
+    nativeHeaders['Content-Range'] = `bytes ${start}-${end}/${fileSize}`;
+    nativeHeaders['Content-Length'] = chunkSize;
+    
+    res.writeHead(206, nativeHeaders);
 
     let downloaded = 0;
     const requestSize = 512 * 1024; // 512KB per MTProto request

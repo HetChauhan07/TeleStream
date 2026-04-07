@@ -8,6 +8,21 @@ export default function MoviePage() {
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState(1);
+  
+  const [downloadModalData, setDownloadModalData] = useState(null);
+  const [downloadQuality, setDownloadQuality] = useState('Original');
+
+  const handleDownloadClick = (mediaId, title) => {
+    setDownloadModalData({ id: mediaId, title });
+    setDownloadQuality('Original');
+  };
+
+  const executeDownload = () => {
+    if (!downloadModalData) return;
+    const url = getStreamUrl(downloadModalData.id, { download: true, quality: downloadQuality });
+    window.location.href = url; // Standard way to trigger file download without opening empty tab
+    setDownloadModalData(null);
+  };
 
   useEffect(() => {
     async function fetchMovie() {
@@ -173,6 +188,14 @@ export default function MoviePage() {
               </svg>
               {mainAction.label}
             </Link>
+            <button className="btn btn--secondary" onClick={() => handleDownloadClick(mainAction.url.replace('/play/', ''), movie.title)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginRight: '8px' }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download
+            </button>
             <Link to="/browse" className="btn btn--secondary">
               ← Back to Library
             </Link>
@@ -232,7 +255,7 @@ export default function MoviePage() {
 
 
                     </div>
-                    <div className="episode-card__details">
+                    <div className="episode-card__details" style={{ flex: 1 }}>
                       <div className="episode-card__header">
                         <h4 className="episode-card__title">
                           <span className="episode-card__number">{part.partNumber}</span>
@@ -242,6 +265,20 @@ export default function MoviePage() {
                       </div>
                       <p className="episode-card__overview">Continues playback for {movie.title}...</p>
                     </div>
+                    <button 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDownloadClick(part._id, `${movie.title} - Part ${part.partNumber}`);
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1rem', display: 'flex', alignItems: 'center' }}
+                      title="Download Part"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                    </button>
                   </Link>
                 ))}
               </div>
@@ -284,7 +321,7 @@ export default function MoviePage() {
 
 
                     </div>
-                    <div className="episode-card__details">
+                    <div className="episode-card__details" style={{ flex: 1 }}>
                       <div className="episode-card__header">
                         <h4 className="episode-card__title">
                           <span className="episode-card__number">{ep.episodeNumber}</span>
@@ -294,6 +331,20 @@ export default function MoviePage() {
                       </div>
                       <p className="episode-card__overview">{ep.episodeOverview || 'No description available.'}</p>
                     </div>
+                    <button 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDownloadClick(ep._id, ep.episodeTitle || `Episode ${ep.episodeNumber}`);
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '1rem', display: 'flex', alignItems: 'center' }}
+                      title="Download Episode"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                    </button>
                   </Link>
                 ))}
               </div>
@@ -302,6 +353,41 @@ export default function MoviePage() {
 
         </div>
       </div>
+
+      {downloadModalData && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+        }}>
+          <div style={{
+            background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '12px', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '1.25rem',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+          }}>
+            <h3 style={{ margin: 0, fontSize: '1.5rem' }}>Download Video</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>{downloadModalData.title}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Select Quality</label>
+              <select 
+                value={downloadQuality}
+                onChange={(e) => setDownloadQuality(e.target.value)}
+                style={{
+                  padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-primary)', color: 'white', border: '1px solid #444', outline: 'none', cursor: 'pointer'
+                }}
+              >
+                <option value="Original">Original (Fastest)</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+                <option value="360">360p</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+              <button className="btn btn--secondary" style={{ flex: 1, padding: '0.75rem' }} onClick={() => setDownloadModalData(null)}>Cancel</button>
+              <button className="btn btn--primary" style={{ flex: 1, padding: '0.75rem' }} onClick={executeDownload}>Download</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
