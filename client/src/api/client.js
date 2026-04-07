@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 30000,
 });
 
@@ -43,23 +43,34 @@ export async function getMediaById(id) {
   return data;
 }
 
-// ─── Streaming ──────────────────────────────────────
 export function getStreamUrl(id, options = {}) {
   const token = localStorage.getItem('token');
-  const base = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
-  let url = `${base}/stream/${id}?token=${token}`;
+  // Use relative route for <video> elements to avoid Chrome CORS/Connection pool hanging
+  // Use absolute port 8000 route for downloads to bypass Vite proxy buffering
+  const backendBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://telestream-jgee.onrender.com';
+  let url = options.download 
+    ? `${backendBase}/api/stream/${id}?token=${token}` 
+    : `/api/stream/${id}?token=${token}`;
   
-  if (options.quality && options.quality !== 'original' && options.quality !== 'Auto') {
-    url += `&quality=${options.quality}`;
-  }
-  if (options.start) {
-    url += `&start=${options.start}`;
-  }
+  // Note: Quality controls removed as per Cloudflare migration
   if (options.download) {
     url += `&download=true`;
   }
   
+  if (options.quality && options.quality.toLowerCase() !== 'original') {
+    url += `&quality=${options.quality}`;
+  }
+  
+  if (options.start) {
+    url += `&start=${Math.floor(options.start)}`;
+  }
+  
   return url;
+}
+
+export async function getConfig() {
+  const { data } = await api.get('/config');
+  return data;
 }
 
 // ─── Progress ───────────────────────────────────────

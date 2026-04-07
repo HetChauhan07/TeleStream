@@ -11,9 +11,6 @@ export default function PlayerPage() {
 
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [qualityMode, setQualityMode] = useState('Auto');
-  const [streamOptions, setStreamOptions] = useState({ quality: 'original', start: 0 });
-
   // Fetch movie and progress
   useEffect(() => {
     async function init() {
@@ -29,8 +26,6 @@ export default function PlayerPage() {
     init();
   }, [id]);
 
-
-
   // Setup mpegts.js if needed
   useEffect(() => {
     let player = null;
@@ -39,7 +34,7 @@ export default function PlayerPage() {
         player = mpegts.createPlayer({
           type: 'm2ts',
           isLive: false,
-          url: getStreamUrl(id, streamOptions),
+          url: getStreamUrl(id),
           duration: movie.duration ? movie.duration * 1000 : undefined,
           filesize: movie.fileSize || undefined
         }, {
@@ -58,56 +53,7 @@ export default function PlayerPage() {
         player.destroy();
       }
     };
-  }, [movie, id, streamOptions]);
-
-  const handleQualityChange = (e) => {
-    const q = e.target.value;
-    setQualityMode(q);
-    
-    // Save current time to resume smoothly
-    const currentTime = videoRef.current ? videoRef.current.currentTime : 0;
-    const newOffset = streamOptions.start + currentTime;
-    
-    // We add a tiny delay to allow React to flush, though not strictly needed
-    if (q === 'Auto') {
-      setStreamOptions({ quality: 'original', start: newOffset });
-    } else if (q === 'Original') {
-      setStreamOptions({ quality: 'original', start: newOffset });
-    } else {
-      setStreamOptions({ quality: q, start: newOffset });
-    }
-  };
-
-  const handleWaiting = () => {
-    if (qualityMode !== 'Auto') return;
-    
-    if (bufferingTimer.current) clearTimeout(bufferingTimer.current);
-    bufferingTimer.current = setTimeout(() => {
-      const downgradeMap = {
-        'original': '720',
-        '1080': '720',
-        '720': '480',
-        '480': '360',
-        '360': '360'
-      };
-      const currentQ = streamOptions.quality === 'original' ? 'original' : streamOptions.quality;
-      const nextQ = downgradeMap[currentQ] || '360';
-      
-      if (nextQ !== currentQ) {
-        console.log(`Auto downgrading quality to ${nextQ} due to buffering...`);
-        const currentTime = videoRef.current ? videoRef.current.currentTime : 0;
-        const newOffset = streamOptions.start + currentTime;
-        setStreamOptions({ quality: nextQ, start: newOffset });
-      }
-    }, 4000); // 4 seconds of buffering triggers downgrade
-  };
-
-  const handlePlaying = () => {
-    if (bufferingTimer.current) {
-      clearTimeout(bufferingTimer.current);
-      bufferingTimer.current = null;
-    }
-  };
+  }, [movie, id]);
 
   const handleEnded = () => {
 
@@ -157,7 +103,7 @@ export default function PlayerPage() {
 
   return (
     <div className="player-page" id="player-page">
-      <button className="player-page__back" onClick={handleBack}>
+      <button className="player-page__back" onClick={handleBack} style={{ zIndex: 30 }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <line x1="19" y1="12" x2="5" y2="12" />
           <polyline points="12 19 5 12 12 5" />
@@ -166,35 +112,18 @@ export default function PlayerPage() {
       </button>
 
       {movie && (
-        <div className="player-page__title-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="player-page__title-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
           <span className="player-page__title-text">{movie.title}</span>
-          <div className="player-page__quality-selector" style={{ background: 'rgba(0,0,0,0.6)', padding: '5px 10px', borderRadius: '6px', pointerEvents: 'auto' }}>
-            <label style={{ color: 'white', marginRight: '8px', fontSize: '14px' }}>Quality:</label>
-            <select 
-              value={qualityMode} 
-              onChange={handleQualityChange}
-              style={{ background: 'transparent', color: 'white', border: '1px solid #555', borderRadius: '4px', padding: '2px 4px', outline: 'none', cursor: 'pointer' }}
-            >
-              <option value="Auto">Auto {qualityMode === 'Auto' && streamOptions.quality !== 'original' ? `(${streamOptions.quality}p)` : ''}</option>
-              <option value="Original">Original</option>
-              <option value="1080">1080p</option>
-              <option value="720">720p</option>
-              <option value="480">480p</option>
-              <option value="360">360p</option>
-            </select>
-          </div>
         </div>
       )}
 
       <video
         ref={videoRef}
         className="player-page__video"
-        src={isMpegTS ? undefined : getStreamUrl(id, streamOptions)}
+        src={isMpegTS ? undefined : getStreamUrl(id)}
         controls
         autoPlay
         onEnded={handleEnded}
-        onWaiting={handleWaiting}
-        onPlaying={handlePlaying}
       >
         {movie?.subtitles?.map((sub, i) => (
           <track
