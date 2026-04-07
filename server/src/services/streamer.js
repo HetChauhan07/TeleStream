@@ -170,7 +170,7 @@ export async function streamMedia(media, req, res) {
           fileReference: document.fileReference,
           thumbSize: '',
         }),
-        requestSize: 512 * 1024, // 512KB chunks
+      requestSize: 1024 * 1024, // 1MB chunks
       });
 
       for await (const chunk of iter) {
@@ -198,7 +198,7 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 5 * 1024 * 1024 - 1, fileSize - 1); 
+    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 10 * 1024 * 1024 - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
     nativeHeaders['Content-Range'] = `bytes ${start}-${end}/${fileSize}`;
@@ -207,7 +207,7 @@ export async function streamMedia(media, req, res) {
     res.writeHead(206, nativeHeaders);
 
     let downloaded = 0;
-    const requestSize = 512 * 1024; // 512KB per MTProto request
+    const requestSize = 1024 * 1024; // 1MB per MTProto request
     
     // GramJS throws corrupted bytes if offset is not perfectly aligned to 512KB.
     const alignedStart = Math.floor(start / requestSize) * requestSize;

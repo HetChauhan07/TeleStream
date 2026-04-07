@@ -17,6 +17,7 @@ import authRoutes from './routes/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+let serverReady = false;
 
 // ─── Middleware ──────────────────────────────────────
 app.use(cors({
@@ -26,6 +27,16 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// ─── Readiness Gate ─────────────────────────────────
+// Return 503 for all API routes (except health) until DB+Telegram are ready
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (!serverReady) {
+    return res.status(503).json({ error: 'Server is starting up, please wait...' });
+  }
+  next();
+});
 
 // ─── Public Routes (no auth required) ───────────────
 app.use('/api/auth', authRoutes);
@@ -39,7 +50,7 @@ app.use('/api/index', requireAuth, indexRoutes);
 
 // Health check (public)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  res.json({ status: serverReady ? 'ready' : 'starting', uptime: process.uptime() });
 });
 
 // ─── Seed Admin Account ─────────────────────────────
@@ -91,13 +102,15 @@ async function start() {
     await seedAdmin();
     await initTelegram();
 
+    // Mark server as ready
+    serverReady = true;
+    console.log('✅ All services initialized — server is ready!');
+
     // Auto-index on startup (non-blocking)
     console.log('\n🚀 Running initial index...');
     indexChannel().catch((err) => {
       console.error('Initial indexing failed:', err.message);
     });
-
-    console.log('✅ All services initialized successfully');
   } catch (err) {
     console.error('⚠️ Service initialization error:', err.message);
     console.error('   Server is running but some features may not work.');
