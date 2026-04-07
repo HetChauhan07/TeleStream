@@ -85,8 +85,8 @@ async function start() {
   });
 
   // 5. Start Express server
-  app.listen(PORT, () => {
-    console.log(`\n🌐 Server running at http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🌐 Server running at http://0.0.0.0:${PORT}`);
     console.log(`   API docs:`);
     console.log(`   • POST /api/auth/login       — Login`);
     console.log(`   • POST /api/auth/register    — Create user (admin)`);
