@@ -30,8 +30,9 @@ export async function initTelegram() {
   const session = new StringSession(sessionStr);
 
   client = new TelegramClient(session, apiId, apiHash, {
-    connectionRetries: 5,
-    useWSS: false,
+    connectionRetries: 3,
+    useWSS: true, // WSS is more reliable behind Render's proxy/firewall
+    timeout: 30,  // 30 second timeout for operations
   });
 
   // If no session saved, do interactive login
@@ -49,7 +50,13 @@ export async function initTelegram() {
     console.log('\n✅ Logged in! Copy this session string to your .env file:');
     console.log(`TELEGRAM_SESSION=${savedSession}\n`);
   } else {
-    await client.connect();
+    console.log('🔄 Connecting to Telegram with saved session...');
+    // Add a timeout to prevent hanging forever on Render
+    const connectPromise = client.connect();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Telegram connection timed out after 60s')), 60000)
+    );
+    await Promise.race([connectPromise, timeoutPromise]);
   }
 
   console.log('✅ Telegram client connected');
