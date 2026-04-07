@@ -69,22 +69,7 @@ async function start() {
   ╚══════════════════════════════════════╝
   `);
 
-  // 1. Connect to MongoDB
-  await connectDB();
-
-  // 2. Seed admin
-  await seedAdmin();
-
-  // 3. Initialize Telegram client
-  await initTelegram();
-
-  // 4. Auto-index on startup (non-blocking)
-  console.log('\n🚀 Running initial index...');
-  indexChannel().catch((err) => {
-    console.error('Initial indexing failed:', err.message);
-  });
-
-  // 5. Start Express server
+  // 1. Start Express server FIRST so Render detects the port immediately
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🌐 Server running at http://0.0.0.0:${PORT}`);
     console.log(`   API docs:`);
@@ -99,6 +84,24 @@ async function start() {
     console.log(`   • POST /api/index            — Re-index channel`);
     console.log(`   • GET  /api/health           — Health check`);
   });
+
+  // 2. Now initialize services in the background
+  try {
+    await connectDB();
+    await seedAdmin();
+    await initTelegram();
+
+    // Auto-index on startup (non-blocking)
+    console.log('\n🚀 Running initial index...');
+    indexChannel().catch((err) => {
+      console.error('Initial indexing failed:', err.message);
+    });
+
+    console.log('✅ All services initialized successfully');
+  } catch (err) {
+    console.error('⚠️ Service initialization error:', err.message);
+    console.error('   Server is running but some features may not work.');
+  }
 }
 
 start().catch((err) => {
