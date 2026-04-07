@@ -45,14 +45,10 @@ export async function getMediaById(id) {
 
 export function getStreamUrl(id, options = {}) {
   const token = localStorage.getItem('token');
-  // Use relative route for <video> elements to avoid Chrome CORS/Connection pool hanging
-  // Use absolute port 8000 route for downloads to bypass Vite proxy buffering
-  const backendBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://telestream-jgee.onrender.com';
-  let url = options.download 
-    ? `${backendBase}/api/stream/${id}?token=${token}` 
-    : `/api/stream/${id}?token=${token}`;
+  const isLocalhost = window.location.hostname === 'localhost';
+  const backendBase = isLocalhost ? '' : 'https://telestream-jgee.onrender.com';
+  let url = `${backendBase}/api/stream/${id}?token=${token}`;
   
-  // Note: Quality controls removed as per Cloudflare migration
   if (options.download) {
     url += `&download=true`;
   }
