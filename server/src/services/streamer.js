@@ -51,10 +51,12 @@ export async function streamMedia(media, req, res) {
   const messageId = media.telegramMessageId;
 
   try {
+    console.log('Fetching message from telegram for channel:', channelId, 'msgId:', messageId);
     // Fetch the message to get fresh file reference
     const messages = await client.getMessages(channelId, {
       ids: [messageId]
     });
+    console.log('Message fetched successfully');
 
     if (!messages || messages.length === 0 || !messages[0]) {
       return res.status(404).json({ error: 'Telegram message not found' });
@@ -152,8 +154,11 @@ export async function streamMedia(media, req, res) {
     const nativeHeaders = {
       'Content-Type': mimeType,
       'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Range',
+      'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
     };
-    
+
     if (isDownload) {
       nativeHeaders['Content-Disposition'] = `attachment; filename="${media.fileName || 'video'}"`;
     }
