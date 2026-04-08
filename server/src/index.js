@@ -100,20 +100,29 @@ async function start() {
   try {
     await connectDB();
     await seedAdmin();
-    await initTelegram();
 
-    // Mark server as ready
+    // Mark server as ready as soon as DB is connected
+    // Library can serve cached movies from MongoDB even without Telegram
     serverReady = true;
-    console.log('✅ All services initialized — server is ready!');
+    console.log('✅ Database ready — server is accepting requests!');
 
-    // Auto-index on startup (non-blocking)
-    console.log('\n🚀 Running initial index...');
-    indexChannel().catch((err) => {
-      console.error('Initial indexing failed:', err.message);
-    });
+    // Initialize Telegram separately (non-blocking for server readiness)
+    try {
+      await initTelegram();
+      console.log('✅ Telegram connected!');
+
+      // Auto-index on startup (non-blocking)
+      console.log('\n🚀 Running initial index...');
+      indexChannel().catch((err) => {
+        console.error('Initial indexing failed:', err.message);
+      });
+    } catch (telegramErr) {
+      console.error('⚠️ Telegram initialization failed:', telegramErr.message);
+      console.error('   Library will serve cached data. Streaming/indexing will not work until Telegram reconnects.');
+    }
   } catch (err) {
-    console.error('⚠️ Service initialization error:', err.message);
-    console.error('   Server is running but some features may not work.');
+    console.error('⚠️ Database initialization error:', err.message);
+    console.error('   Server is running but no data can be served.');
   }
 }
 

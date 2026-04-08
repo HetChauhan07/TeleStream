@@ -1,7 +1,8 @@
 import axios from 'axios';
 
+const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || (isLocalhost ? '/api' : 'https://telestream-jgee.onrender.com/api'),
   timeout: 30000,
 });
 
