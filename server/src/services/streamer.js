@@ -52,10 +52,25 @@ export async function streamMedia(media, req, res) {
 
   try {
     console.log('Fetching message from telegram for channel:', channelId, 'msgId:', messageId);
-    // Fetch the message to get fresh file reference
-    const messages = await client.getMessages(channelId, {
-      ids: [messageId]
-    });
+    
+    // Render/PaaS often silently drops idle WebSockets. 
+    // We add a 5-second timeout, and if it hangs, we force a reconnect.
+    let messages;
+    try {
+      messages = await Promise.race([
+        client.getMessages(channelId, { ids: [messageId] }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 5000))
+      ]);
+    } catch (err) {
+      if (err.message === 'TIMEOUT') {
+        console.log('⚠️ Telegram client socket silently dropped! Forcing reconnect...');
+        await client.connect();
+        messages = await client.getMessages(channelId, { ids: [messageId] });
+      } else {
+        throw err;
+      }
+    }
+    
     console.log('Message fetched successfully');
 
     if (!messages || messages.length === 0 || !messages[0]) {
@@ -232,8 +247,26 @@ export async function streamMedia(media, req, res) {
     });
 
     let isFirstChunk = true;
-    for await (const chunk of iter) {
+    const asyncIter = iter[Symbol.asyncIterator]();
+    
+    while (true) {
       if (res.destroyed) return;
+      let chunkResult;
+      try {
+        chunkResult = await Promise.race([
+          asyncIter.next(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('CHUNK_TIMEOUT')), 15000))
+        ]);
+      } catch (err) {
+        if (err.message === 'CHUNK_TIMEOUT') {
+           console.log('⚠️ Chunk download timed out! Closing stream to prompt client reconnect.');
+           break;
+        }
+        throw err;
+      }
+      
+      if (chunkResult.done) break;
+      const chunk = chunkResult.value;
       
       let data = chunk;
       if (isFirstChunk) {
