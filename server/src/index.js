@@ -69,8 +69,8 @@ app.get('/api/health', async (req, res) => {
 
 // ─── Seed Admin Account ─────────────────────────────
 async function seedAdmin() {
-  const adminUser = process.env.ADMIN_USERNAME || 'admin';
-  const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminUser = process.env.ADMIN_USERNAME || 'hetchauhan';
+  const adminPass = process.env.ADMIN_PASSWORD || 'hetchauhan@1103';
 
   const existing = await User.findOne({ username: adminUser });
   if (!existing) {

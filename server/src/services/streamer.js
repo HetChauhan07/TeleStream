@@ -218,7 +218,8 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 10 * 1024 * 1024 - 1, fileSize - 1); 
+    // REDUCE chunk size to 1MB to prevent Render proxy timeouts due to Telegram IP throttling
+    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 1024 * 1024 - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
     nativeHeaders['Content-Range'] = `bytes ${start}-${end}/${fileSize}`;
@@ -227,7 +228,9 @@ export async function streamMedia(media, req, res) {
     res.writeHead(206, nativeHeaders);
 
     let downloaded = 0;
-    const requestSize = 1024 * 1024; // 1MB per MTProto request
+    // USE 512KB strictly. Telegram's native part size is 512KB. 
+    // GramJS alignment works much faster and safer with 512KB offsets than 1MB.
+    const requestSize = 512 * 1024;
     
     // GramJS throws corrupted bytes if offset is not perfectly aligned to 512KB.
     const alignedStart = Math.floor(start / requestSize) * requestSize;
