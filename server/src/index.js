@@ -49,8 +49,22 @@ app.use('/api/index', requireAuth, indexRoutes);
 
 
 // Health check (public)
-app.get('/api/health', (req, res) => {
-  res.json({ status: serverReady ? 'ready' : 'starting', uptime: process.uptime() });
+app.get('/api/health', async (req, res) => {
+  let telegramStatus = 'unknown';
+  if (serverReady) {
+    try {
+      const { getTelegramClient } = await import('./services/telegram.js');
+      const client = getTelegramClient();
+      await Promise.race([
+        client.getMe(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+      ]);
+      telegramStatus = 'connected';
+    } catch (err) {
+      telegramStatus = err.message === 'TIMEOUT' ? 'hanging' : 'error';
+    }
+  }
+  res.json({ status: serverReady ? 'ready' : 'starting', uptime: process.uptime(), telegramStatus });
 });
 
 // ─── Seed Admin Account ─────────────────────────────
