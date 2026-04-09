@@ -199,16 +199,23 @@ export async function streamMedia(media, req, res) {
           // Helper to fetch a single chunk
           const fetchChunk = async (offset) => {
             if (offset >= fileSize) return null;
-            const limit = Math.min(CHUNK_SIZE, fileSize - offset);
-            return await client.downloadFile(
-              new Api.InputDocumentFileLocation({
-                id: document.id,
-                accessHash: document.accessHash,
-                fileReference: document.fileReference,
-                thumbSize: '',
-              }),
-              { offset: bigInt(offset), limit: limit }
+            
+            // Telegram strictly requires chunks to be multiples of 4096. 
+            // 512 * 1024 is the safest exact size to request.
+            const result = await client.invoke(
+              new Api.upload.GetFile({
+                location: new Api.InputDocumentFileLocation({
+                  id: document.id,
+                  accessHash: document.accessHash,
+                  fileReference: document.fileReference,
+                  thumbSize: '',
+                }),
+                offset: bigInt(offset),
+                limit: 512 * 1024, 
+              })
             );
+            
+            return result.bytes;
           };
 
           // Queue logic: we keep 4 chunks "in flight" at all times
@@ -381,7 +388,7 @@ export async function streamMedia(media, req, res) {
       }
 
       downloaded += toWrite.length;
-      if (downloaded >= chunkSize || res.destroyed) return;
+      if (downloaded >= chunkSize || res.destroyed) break; // <--- BUG FIXED HERE
     }
 
     if (!res.destroyed) res.end();
