@@ -108,12 +108,8 @@ export async function streamMedia(media, req, res) {
     }
 
     if (needsTranscode && !isRaw) {
-      console.log(`🎬 On-the-fly Transcoding: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
+      console.log(`🎬 On-the-fly Pipeline: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
-      const token = req.query.token || '';
-      const qualityParam = quality ? `&quality=${quality}` : '';
-      const rawUrl = `http://127.0.0.1:${serverPort}/api/stream/${media._id}?raw=true&token=${encodeURIComponent(token)}${qualityParam}`;
-
       const headers = {
         'Content-Type': 'video/mp4',
         'Transfer-Encoding': 'chunked',
@@ -128,16 +124,15 @@ export async function streamMedia(media, req, res) {
 
       res.writeHead(200, headers);
 
-      const command = ffmpeg(rawUrl);
+      // Create a direct PassThrough stream for the input
+      const inputStream = new PassThrough();
+      
+      const command = ffmpeg(inputStream);
 
       // Add reconnection options for the input stream to handle transient network issues
       command.inputOptions([
-        '-reconnect 1',
-        '-reconnect_streamed 1',
-        '-reconnect_at_eof 1',
-        '-reconnect_delay_max 5',
-        '-analyzeduration 5000000', // 5MB probe - standard web headers
-        '-probesize 5000000',
+        '-analyzeduration 10000000', // 10MB probe
+        '-probesize 10000000',
       ]);
 
       // Add time offset logic
@@ -174,24 +169,52 @@ export async function streamMedia(media, req, res) {
 
       command.outputOptions(outputOptions)
         .toFormat('mp4')
-        .outputOptions('-f mp4') // force format
         .on('start', (cmdLine) => {
-          console.log('  FFmpeg started with command:', cmdLine);
+          console.log('  🔥 Direct Pipeline started:', cmdLine);
         })
         .on('error', (err) => {
           if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) {
-             console.error('  ❌ FFmpeg Stream Error:', err.message);
+             console.error('  ❌ Pipeline Error:', err.message);
           }
           if (!res.headersSent) res.status(500).end();
+          inputStream.destroy();
         })
         .on('end', () => {
-          console.log('  🏁 FFmpeg transcoding finished.');
+          console.log('  🏁 Pipeline finished.');
+          inputStream.destroy();
         });
         
       command.pipe(res, { end: true });
 
+      // Start fetching from Telegram and pipe into FFmpeg
+      (async () => {
+        try {
+          const iter = client.iterDownload({
+            file: new Api.InputDocumentFileLocation({
+              id: document.id,
+              accessHash: document.accessHash,
+              fileReference: document.fileReference,
+              thumbSize: '',
+            }),
+            requestSize: 1024 * 1024, // 1MB chunks
+          });
+
+          for await (const chunk of iter) {
+            if (res.destroyed || inputStream.destroyed) break;
+            if (!inputStream.write(chunk)) {
+              await new Promise(resolve => inputStream.once('drain', resolve));
+            }
+          }
+          inputStream.end();
+        } catch (err) {
+          console.error('  ⚠️ Pipeline Input Error:', err.message);
+          inputStream.destroy();
+        }
+      })();
+
       req.on('close', () => {
          command.kill('SIGKILL');
+         inputStream.destroy();
       });
 
       return;
