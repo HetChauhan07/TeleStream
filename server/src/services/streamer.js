@@ -137,8 +137,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
-        '-analyzeduration 1000000', // Limit probing to 1s to speed up metadata fetch
-        '-probesize 1000000',
+        '-analyzeduration 5000000', // 5MB probe - safe middle ground
+        '-probesize 5000000',
       ]);
 
       // Add time offset logic
@@ -148,11 +148,13 @@ export async function streamMedia(media, req, res) {
 
       const outputOptions = [
         '-preset ultrafast',
-        '-movflags frag_keyframe+empty_moov',
-        '-c:v copy', // USE STREAM COPY - Essential for Render Free Tier (Zero CPU usage)
+        '-movflags frag_keyframe+empty_moov+default_base_moof', // added base_moof for better browser compatibility
+        '-c:v copy', 
         '-c:a aac',
         '-strict experimental',
-        '-map 0',
+        '-map 0:v:0', // STRIP extra tracks (subtitles, multi-audio) that break browser playback
+        '-map 0:a:0',
+        '-ignore_unknown',
         '-max_muxing_queue_size 1024',
         '-threads 0', 
       ];
@@ -164,6 +166,7 @@ export async function streamMedia(media, req, res) {
 
       command.outputOptions(outputOptions)
         .toFormat('mp4')
+        .outputOptions('-f mp4') // force format
         .on('start', (cmdLine) => {
           console.log('  FFmpeg started with command:', cmdLine);
         })

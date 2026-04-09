@@ -50,13 +50,20 @@ export async function initTelegram() {
     console.log('\n✅ Logged in! Copy this session string to your .env file:');
     console.log(`TELEGRAM_SESSION=${savedSession}\n`);
   } else {
-    console.log('🔄 Connecting to Telegram with saved session...');
-    // Add a timeout to prevent hanging forever on Render
-    const connectPromise = client.connect();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Telegram connection timed out after 60s')), 60000)
-    );
-    await Promise.race([connectPromise, timeoutPromise]);
+    try {
+      const connectPromise = client.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Telegram connection timed out after 60s')), 60000)
+      );
+      await Promise.race([connectPromise, timeoutPromise]);
+    } catch (err) {
+      if (err.message.includes('406') || err.message.includes('AUTH_KEY_DUPLICATED')) {
+        console.error('\n❌ Telegram Connection Error: AUTH_KEY_DUPLICATED (406)');
+        console.error('   This happens when your hosted server (Render) and local server try to use the same session simultaneously.');
+        console.error('   👉 FIX: Stop the Render service temporarily, OR delete your local .env TELEGRAM_SESSION to re-login with a new key.\n');
+      }
+      throw err;
+    }
   }
   
   // ─── Connection Resilience ──────────────────────────
