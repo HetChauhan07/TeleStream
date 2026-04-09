@@ -136,8 +136,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
-        '-analyzeduration 10000000', // 10MB probe - more reliable for headers
-        '-probesize 10000000',
+        '-analyzeduration 5000000', // 5MB probe - standard web headers
+        '-probesize 5000000',
       ]);
 
       // Add time offset logic
@@ -148,16 +148,17 @@ export async function streamMedia(media, req, res) {
       const outputOptions = [
         '-preset ultrafast',
         '-tune zerolatency',
-        '-movflags frag_keyframe+empty_moov', // simplified flags for wider browser support
-        '-c:v libx264', // RE-ENCODE in 720p to ensure universal browser compatibility
-        '-vf scale=-2:720', // LIMIT resolution to 720p to save Render CPU
-        '-crf 28',         // Reduce quality slightly to speed up encoding
+        '-movflags frag_keyframe+empty_moov', 
+        '-c:v libx264',
+        '-pix_fmt yuv420p', // FORCED Browser compatibility
+        '-vf scale=-2:720', // Cap at 720p for Render CPU safety
+        '-crf 28',
         '-c:a aac',
         '-strict experimental',
         '-map 0:v:0',
         '-map 0:a:0?',
         '-ignore_unknown',
-        '-f mp4', // force format as an explicit flag
+        '-f mp4',
         '-max_muxing_queue_size 1024',
         '-threads 0', 
       ];
