@@ -137,8 +137,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
-        '-analyzeduration 5000000', // 5MB probe - safe middle ground
-        '-probesize 5000000',
+        '-analyzeduration 10000000', // 10MB probe - more reliable for complex MKVs
+        '-probesize 10000000',
       ]);
 
       // Add time offset logic
@@ -152,8 +152,9 @@ export async function streamMedia(media, req, res) {
         '-c:v copy', 
         '-c:a aac',
         '-strict experimental',
-        '-map 0:v:0', // STRIP extra tracks (subtitles, multi-audio) that break browser playback
-        '-map 0:a:0',
+        '-map 0:v:0', // STRIP extra tracks
+        '-map 0:a:0?', // OPTIONAL audio mapping (don't crash if no audio)
+        '-map -0:s',   // Explicitly exclude all subtitles to avoid muxing errors
         '-ignore_unknown',
         '-max_muxing_queue_size 1024',
         '-threads 0', 
