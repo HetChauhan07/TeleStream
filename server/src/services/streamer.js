@@ -27,14 +27,12 @@ function inferMimeType(fileName, storedMime) {
   if (storedMime && storedMime.startsWith('video/')) {
     return storedMime;
   }
-  // Otherwise infer from file extension
   if (fileName) {
     const ext = '.' + fileName.split('.').pop().toLowerCase();
     if (EXT_TO_MIME[ext]) {
       return EXT_TO_MIME[ext];
     }
   }
-  // Fallback
   return storedMime || 'video/mp4';
 }
 
@@ -313,7 +311,7 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    // 2MB is the sweet spot for Render Free Tier memory (512MB)
+    // 2MB is the sweet spot for Cloud memory limits
     const CHUNK_SIZE = 2 * 1024 * 1024;
     const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + CHUNK_SIZE - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
@@ -327,68 +325,69 @@ export async function streamMedia(media, req, res) {
       console.log(`  📥 Loopback fetching: bytes ${start}-${end}/${fileSize}`);
     }
 
+    // ─── THE FIX: Manual Byte-Perfect Chunking ───
     let downloaded = 0;
-    // Standard Telegram chunking
-    const requestSize = 512 * 1024;
+    const requestSize = 512 * 1024; // Telegram strictly requires 512KB atomic chunks
     
-    // GramJS throws corrupted bytes if offset is not perfectly aligned to 512KB.
-    const alignedStart = Math.floor(start / requestSize) * requestSize;
-    const skipBytes = start - alignedStart;
-    const totalBytesToFetch = end - alignedStart + 1;
+    // Calculate exact MTProto alignment
+    let currentTelegramOffset = Math.floor(start / requestSize) * requestSize;
+    let skipBytes = start - currentTelegramOffset;
 
-    const iter = client.iterDownload({
-      file: new Api.InputDocumentFileLocation({
-        id: document.id,
-        accessHash: document.accessHash,
-        fileReference: document.fileReference,
-        thumbSize: '',
-      }),
-      offset: bigInt(alignedStart),
-      requestSize: requestSize,
-      limit: totalBytesToFetch,
-    });
+    while (downloaded < chunkSize) {
+      if (res.destroyed) break;
 
-    let isFirstChunk = true;
-    const asyncIter = iter[Symbol.asyncIterator]();
-    
-    while (true) {
-      if (res.destroyed) return;
-      let chunkResult;
+      let chunkData;
       try {
-        chunkResult = await Promise.race([
-          asyncIter.next(),
+        const fetchPromise = client.invoke(
+          new Api.upload.GetFile({
+            location: new Api.InputDocumentFileLocation({
+              id: document.id,
+              accessHash: document.accessHash,
+              fileReference: document.fileReference,
+              thumbSize: '',
+            }),
+            offset: bigInt(currentTelegramOffset),
+            limit: requestSize,
+          })
+        );
+
+        // Protect against cloud host proxies dropping silent connections
+        const result = await Promise.race([
+          fetchPromise,
           new Promise((_, reject) => setTimeout(() => reject(new Error('CHUNK_TIMEOUT')), 15000))
         ]);
+        
+        chunkData = result.bytes;
       } catch (err) {
-        if (err.message === 'CHUNK_TIMEOUT') {
-           console.log('⚠️ Chunk download timed out! Closing stream to prompt client reconnect.');
-           break;
-        }
-        throw err;
+        console.error('  ⚠️ Chunk download error:', err.message);
+        break; 
       }
       
-      if (chunkResult.done) break;
-      const chunk = chunkResult.value;
-      
-      let data = chunk;
-      if (isFirstChunk) {
-        data = chunk.slice(skipBytes);
-        isFirstChunk = false;
+      if (!chunkData || chunkData.length === 0) {
+        break; // Reached End of File
       }
 
-      const remaining = chunkSize - downloaded;
-      const toWrite = remaining < data.length ? data.slice(0, remaining) : data;
+      let dataToWrite = chunkData;
 
-      if (!res.write(toWrite)) {
-        await new Promise(resolve => {
-          res.once('drain', resolve);
-          res.once('close', resolve);
-          res.once('error', resolve);
-        });
+      // 1. If it's the very first chunk fetched, trim the unaligned start bytes
+      if (skipBytes > 0) {
+        dataToWrite = chunkData.slice(skipBytes);
+        skipBytes = 0; // Only skip on the first fetch
       }
 
-      downloaded += toWrite.length;
-      if (downloaded >= chunkSize || res.destroyed) break; // <--- BUG FIXED HERE
+      // 2. Prevent sending more bytes than the HTTP Content-Length promised
+      const remainingToSend = chunkSize - downloaded;
+      if (dataToWrite.length > remainingToSend) {
+        dataToWrite = dataToWrite.slice(0, remainingToSend);
+      }
+
+      // 3. Write to Express response with strict backpressure handling
+      if (!res.write(dataToWrite)) {
+        await new Promise(resolve => res.once('drain', resolve));
+      }
+
+      downloaded += dataToWrite.length;
+      currentTelegramOffset += requestSize; // Move forward exactly 512KB to fetch the next block
     }
 
     if (!res.destroyed) res.end();
