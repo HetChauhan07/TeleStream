@@ -110,10 +110,9 @@ export async function streamMedia(media, req, res) {
     if (needsTranscode && !isRaw) {
       console.log(`🎬 On-the-fly Transcoding: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
-      const serverPort = process.env.PORT || 8000;
-      // Stable internal URL using ID and Token
       const token = req.query.token || '';
-      const rawUrl = `http://127.0.0.1:${serverPort}/api/stream/${media._id}?raw=true&token=${token}`;
+      const qualityParam = quality ? `&quality=${quality}` : '';
+      const rawUrl = `http://127.0.0.1:${serverPort}/api/stream/${media._id}?raw=true&token=${encodeURIComponent(token)}${qualityParam}`;
 
       const headers = {
         'Content-Type': 'video/mp4',
@@ -137,8 +136,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
-        '-analyzeduration 5000000', // 5MB probe - safe balance for headers
-        '-probesize 5000000',
+        '-analyzeduration 10000000', // 10MB probe - more reliable for headers
+        '-probesize 10000000',
       ]);
 
       // Add time offset logic
@@ -149,7 +148,7 @@ export async function streamMedia(media, req, res) {
       const outputOptions = [
         '-preset ultrafast',
         '-tune zerolatency',
-        '-movflags frag_keyframe+empty_moov+default_base_moof',
+        '-movflags frag_keyframe+empty_moov', // simplified flags for wider browser support
         '-c:v libx264', // RE-ENCODE in 720p to ensure universal browser compatibility
         '-vf scale=-2:720', // LIMIT resolution to 720p to save Render CPU
         '-crf 28',         // Reduce quality slightly to speed up encoding
@@ -158,6 +157,7 @@ export async function streamMedia(media, req, res) {
         '-map 0:v:0',
         '-map 0:a:0?',
         '-ignore_unknown',
+        '-f mp4', // force format as an explicit flag
         '-max_muxing_queue_size 1024',
         '-threads 0', 
       ];
