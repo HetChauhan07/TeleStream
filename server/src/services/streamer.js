@@ -3,7 +3,7 @@ import { getTelegramClient } from './telegram.js';
 import bigInt from 'big-integer';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import { PassThrough } from 'stream';
+import { PassThrough, Readable } from 'stream';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const SUPPORTED_NATIVE_MIMES = ['video/mp4', 'video/webm', 'video/ogg', 'video/mp2t'];
@@ -108,16 +108,14 @@ export async function streamMedia(media, req, res) {
     }
 
     if (needsTranscode && !isRaw) {
-      console.log(`🎬 On-the-fly Transcoding required for format: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}`);
+      console.log(`🎬 On-the-fly Transcoding: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
-      const serverPort = process.env.PORT || 8000;
-      // Loopback URL. This allows ffmpeg to execute HTTP 206 Range requests to find the Moov atom instantly.
-      const rawUrl = `http://127.0.0.1:${serverPort}${req.originalUrl}${req.originalUrl.includes('?') ? '&' : '?'}raw=true`;
-
       const headers = {
         'Content-Type': 'video/mp4',
         'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Cache-Control': 'no-cache',
       };
 
       if (isDownload) {
@@ -126,18 +124,35 @@ export async function streamMedia(media, req, res) {
 
       res.writeHead(200, headers);
 
-      const command = ffmpeg(rawUrl);
+      // ─── Direct Stream Input ───
+      // Instead of HTTP loopback (which fails on Render), we pipe the Telegram iterDownload 
+      // directly into ffmpeg. 
+      const telegramIter = client.iterDownload({
+        file: new Api.InputDocumentFileLocation({
+          id: document.id,
+          accessHash: document.accessHash,
+          fileReference: document.fileReference,
+          thumbSize: '',
+        }),
+        requestSize: 1024 * 1024,
+      });
+
+      const inputStream = Readable.from(telegramIter);
+      const command = ffmpeg(inputStream);
 
       // Add time offset logic
       if (startOffset) {
+        // use -ss BEFORE input for faster seeking if possible, but with streams it's tricky.
+        // ffmpeg will handle it by discarding.
         command.inputOptions([`-ss ${startOffset}`]);
       }
 
       const outputOptions = [
-        '-preset ultrafast',
+        '-preset ultrafast', // Essential for Render Free Tier
         '-movflags frag_keyframe+empty_moov',
-        '-c:v libx264', // Convert HEVC explicitly so Chrome can stream it
+        '-c:v libx264',
         '-c:a aac',
+        '-threads 0', // Use all available (limited) cores
       ];
 
       // Add scaler if quality is reduced
@@ -158,6 +173,7 @@ export async function streamMedia(media, req, res) {
 
       req.on('close', () => {
          command.kill('SIGKILL');
+         inputStream.destroy();
       });
 
       return;

@@ -67,6 +67,7 @@ export async function indexChannel() {
   const activeTelegramIds = new Set();
   const tmdbCache = new Map(); // Prevent mismatched movie parts due to API limits
 
+  let scannerFinished = false;
   try {
     // Iterate through all messages in the channel
     for await (const message of client.iterMessages(channelId, {})) {
@@ -252,20 +253,37 @@ export async function indexChannel() {
         errors++;
       }
     }
-
-    // ─── Two-Way Sync Cleanup ──────────
-    const activeIdsArray = Array.from(activeTelegramIds);
-    const deleteResult = await Media.deleteMany({
-      telegramChannelId: channelId,
-      telegramMessageId: { $nin: activeIdsArray }
-    });
     
-    if (deleteResult.deletedCount > 0) {
-      console.log(`  🗑️ Removed ${deleteResult.deletedCount} deleted media entries from the database.`);
-    }
+    scannerFinished = true; // Mark as successful if we reach the end of the loop
+    console.log('✅ Telegram scan completed successfully.');
 
   } catch (err) {
-    console.error('❌ Channel scan failed:', err.message);
+    console.error('❌ Channel scan failed partway:', err.message);
+  }
+
+  // ─── Two-Way Sync Cleanup ──────────
+  // Only proceed if the scanner finished successfully. 
+  // This prevents wiping the DB if the connection drops at the start of a scan.
+  if (scannerFinished) {
+    try {
+      const activeIdsArray = Array.from(activeTelegramIds);
+      console.log(`🧹 Sync cleanup: verifying ${activeIdsArray.length} active messages...`);
+      
+      const deleteResult = await Media.deleteMany({
+        telegramChannelId: channelId,
+        telegramMessageId: { $nin: activeIdsArray }
+      });
+      
+      if (deleteResult.deletedCount > 0) {
+        console.log(`  🗑️ Removed ${deleteResult.deletedCount} orphaned media entries (deleted from Telegram) from the database.`);
+      } else {
+        console.log('  ✨ No orphaned entries found.');
+      }
+    } catch (cleanupErr) {
+      console.error('❌ Cleanup failed:', cleanupErr.message);
+    }
+  } else {
+    console.warn('⚠️ Scan did not finish successfully; skipping database cleanup to prevent data loss.');
   }
 
   console.log(`\n📊 Indexing complete: ${added} added, ${skipped} skipped, ${errors} errors`);

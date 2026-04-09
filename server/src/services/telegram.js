@@ -58,6 +58,12 @@ export async function initTelegram() {
     );
     await Promise.race([connectPromise, timeoutPromise]);
   }
+  
+  // ─── Connection Resilience ──────────────────────────
+  client.on('disconnected', () => {
+    console.warn('⚠️ Telegram client disconnected! Attempting to reconnect...');
+    client.connect().catch(err => console.error('Reconnect failed:', err.message));
+  });
 
   console.log('✅ Telegram client connected');
   return client;
