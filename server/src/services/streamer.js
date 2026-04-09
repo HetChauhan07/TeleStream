@@ -8,7 +8,6 @@ import { PassThrough } from 'stream';
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const SUPPORTED_NATIVE_MIMES = ['video/mp4', 'video/webm', 'video/ogg', 'video/mp2t'];
 
-// Infer MIME from filename when Telegram/DB stores a generic or empty type
 const EXT_TO_MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4',
   '.mkv': 'video/x-matroska',
@@ -23,36 +22,20 @@ const EXT_TO_MIME = {
 };
 
 function inferMimeType(fileName, storedMime) {
-  // If the stored MIME is a known video type, trust it
-  if (storedMime && storedMime.startsWith('video/')) {
-    return storedMime;
-  }
+  if (storedMime && storedMime.startsWith('video/')) return storedMime;
   if (fileName) {
     const ext = '.' + fileName.split('.').pop().toLowerCase();
-    if (EXT_TO_MIME[ext]) {
-      return EXT_TO_MIME[ext];
-    }
+    if (EXT_TO_MIME[ext]) return EXT_TO_MIME[ext];
   }
   return storedMime || 'video/mp4';
 }
 
-/**
- * Streams a file from Telegram to an Express response with HTTP 206 support.
- *
- * @param {Object} media - The Media mongoose document
- * @param {Object} req - Express request
- * @param {Object} res - Express response
- */
 export async function streamMedia(media, req, res) {
   const client = getTelegramClient();
   const channelId = media.telegramChannelId;
   const messageId = media.telegramMessageId;
 
   try {
-    console.log('Fetching message from telegram for channel:', channelId, 'msgId:', messageId);
-    
-    // Render/PaaS often silently drops idle WebSockets. 
-    // We add a 5-second timeout, and if it hangs, we force a reconnect.
     let messages;
     try {
       messages = await Promise.race([
@@ -61,7 +44,7 @@ export async function streamMedia(media, req, res) {
       ]);
     } catch (err) {
       if (err.message === 'TIMEOUT') {
-        console.log('⚠️ Telegram client socket silently dropped! Forcing reconnect...');
+        console.log('⚠️ Telegram socket dropped! Reconnecting...');
         await client.connect();
         messages = await client.getMessages(channelId, { ids: [messageId] });
       } else {
@@ -69,44 +52,34 @@ export async function streamMedia(media, req, res) {
       }
     }
     
-    console.log('Message fetched successfully');
-
     if (!messages || messages.length === 0 || !messages[0]) {
       return res.status(404).json({ error: 'Telegram message not found' });
     }
 
     const message = messages[0];
-
     if (!message.media || !message.media.document) {
       return res.status(404).json({ error: 'No video document in message' });
     }
 
     const document = message.media.document;
     const fileSize = Number(document.size);
-    // Infer the real MIME type from the filename if the stored/Telegram type is unreliable
     let mimeType = inferMimeType(media.fileName, media.mimeType || document.mimeType);
 
-    // ─── Subtitle Handling (Fully buffering & converting) ───
     if (media.type === 'subtitle' || fileNameIsSub(media.fileName)) {
       return await serveSubtitle(client, document, media.fileName, res);
     }
 
-    // ─── Query Parameters ───
     const isRaw = req.query && req.query.raw === 'true';
-    const quality = req.query.quality; // e.g., '1080', '720', '480', 'original'
-    const startOffset = req.query.start; // in seconds
+    const quality = req.query.quality; 
+    const startOffset = req.query.start; 
     const isDownload = req.query.download === 'true';
 
-    // ─── Native vs Transcode Detection ───
     let needsTranscode = !SUPPORTED_NATIVE_MIMES.includes(mimeType) && media.type !== 'subtitle' && !fileNameIsSub(media.fileName);
-    
-    // Force transcode if a specific quality is requested
-    if (quality && quality !== 'original' && media.type !== 'subtitle') {
-      needsTranscode = true;
-    }
+    if (quality && quality !== 'original' && media.type !== 'subtitle') needsTranscode = true;
 
+    // ─── FFmpeg Transcode Pipeline ───
     if (needsTranscode && !isRaw) {
-      console.log(`🎬 On-the-fly Pipeline: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
+      console.log(`🎬 Transcode Pipeline: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
       const headers = {
         'Content-Type': 'video/mp4',
@@ -115,150 +88,75 @@ export async function streamMedia(media, req, res) {
         'Cross-Origin-Resource-Policy': 'cross-origin',
         'Cache-Control': 'no-cache',
       };
-
-      if (isDownload) {
-        headers['Content-Disposition'] = `attachment; filename="${media.fileName || 'video.mp4'}"`;
-      }
-
+      if (isDownload) headers['Content-Disposition'] = `attachment; filename="${media.fileName || 'video.mp4'}"`;
       res.writeHead(200, headers);
 
-      // Create a direct PassThrough stream for the input
       const inputStream = new PassThrough();
-      
       const command = ffmpeg(inputStream);
 
-      // Add reconnection options for the input stream to handle transient network issues
-      command.inputOptions([
-        '-analyzeduration 1000000', // 1MB probe - MUCH faster startup
-        '-probesize 1000000',
-        '-fflags +nobuffer',
-        '-flags +low_delay',
-      ]);
+      command.inputOptions(['-analyzeduration 1000000', '-probesize 1000000', '-fflags +nobuffer', '-flags +low_delay']);
+      if (startOffset) command.inputOptions([`-ss ${startOffset}`]);
 
-      // Add time offset logic
-      if (startOffset) {
-        command.inputOptions([`-ss ${startOffset}`]);
-      }
+      const outputOptions = ['-preset ultrafast', '-tune zerolatency', '-movflags frag_keyframe+empty_moov', '-c:a aac', '-strict experimental', '-map 0:v:0', '-map 0:a:0?', '-ignore_unknown', '-f mp4', '-max_muxing_queue_size 1024', '-threads 0'];
 
-      const outputOptions = [
-        '-preset ultrafast',
-        '-tune zerolatency',
-        '-movflags frag_keyframe+empty_moov', 
-        '-c:a aac',
-        '-strict experimental',
-        '-map 0:v:0',
-        '-map 0:a:0?',
-        '-ignore_unknown',
-        '-f mp4',
-        '-max_muxing_queue_size 1024',
-        '-threads 0', 
-      ];
-
-      // SMART COMPATIBILITY:
-      // If no specific quality is requested, we REMUX (copy) to save 100% CPU.
-      // This is the "Golden Rule" for Render Free Tier.
-      if (!quality || quality === 'original') {
-        outputOptions.push('-c:v copy');
-      } else {
-        // If user explicitly asks for 720, 480 etc, we MUST transcode.
-        outputOptions.push('-c:v libx264');
-        outputOptions.push('-pix_fmt yuv420p');
-        outputOptions.push(`-vf scale=-2:${quality}`);
-        outputOptions.push('-crf 28');
+      if (!quality || quality === 'original') outputOptions.push('-c:v copy');
+      else {
+        outputOptions.push('-c:v libx264', '-pix_fmt yuv420p', `-vf scale=-2:${quality}`, '-crf 28');
       }
 
       command.outputOptions(outputOptions)
         .toFormat('mp4')
-        .on('start', (cmdLine) => {
-          console.log('  🔥 Direct Pipeline started:', cmdLine);
-        })
         .on('error', (err) => {
-          if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) {
-             console.error('  ❌ Pipeline Error:', err.message);
-          }
+          if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) console.error('  ❌ Pipeline Error:', err.message);
           if (!res.headersSent) res.status(500).end();
           inputStream.destroy();
         })
-        .on('end', () => {
-          console.log('  🏁 Pipeline finished.');
-          inputStream.destroy();
-        });
-        
-      command.pipe(res, { end: true });
+        .pipe(res, { end: true });
 
-      // Start fetching from Telegram and pipe into FFmpeg
       (async () => {
         try {
-          const CHUNK_SIZE = 512 * 1024; // 512KB is the Telegram atomic size
-          const PREFETCH_WINDOW = 4;      // How many chunks to fetch in parallel
-          let currentOffset = 0;
-          let isFetching = true;
-
-          // Helper to fetch a single chunk
+          const CHUNK_SIZE = 512 * 1024; 
+          const PREFETCH_WINDOW = 4;      
           const fetchChunk = async (offset) => {
             if (offset >= fileSize) return null;
-            
-            // Telegram strictly requires chunks to be multiples of 4096. 
-            // 512 * 1024 is the safest exact size to request.
             const result = await client.invoke(
               new Api.upload.GetFile({
-                location: new Api.InputDocumentFileLocation({
-                  id: document.id,
-                  accessHash: document.accessHash,
-                  fileReference: document.fileReference,
-                  thumbSize: '',
-                }),
-                offset: bigInt(offset),
-                limit: 512 * 1024, 
+                location: new Api.InputDocumentFileLocation({ id: document.id, accessHash: document.accessHash, fileReference: document.fileReference, thumbSize: '' }),
+                offset: bigInt(offset), limit: 512 * 1024, 
               })
             );
-            
             return result.bytes;
           };
 
-          // Queue logic: we keep 4 chunks "in flight" at all times
           let nextOffsetToQueue = 0;
-          const activeRequests = new Map(); // offset -> promise
+          const activeRequests = new Map(); 
 
           while (nextOffsetToQueue < fileSize || activeRequests.size > 0) {
             if (res.destroyed || inputStream.destroyed) break;
-
-            // Fill the prefetch window
             while (activeRequests.size < PREFETCH_WINDOW && nextOffsetToQueue < fileSize) {
-              const offset = nextOffsetToQueue;
-              activeRequests.set(offset, fetchChunk(offset));
+              activeRequests.set(nextOffsetToQueue, fetchChunk(nextOffsetToQueue));
               nextOffsetToQueue += CHUNK_SIZE;
             }
-
-            // Get the oldest chunk
             const oldestOffset = Math.min(...activeRequests.keys());
             const chunk = await activeRequests.get(oldestOffset);
             activeRequests.delete(oldestOffset);
 
             if (chunk) {
-              if (!inputStream.write(chunk)) {
-                await new Promise(resolve => inputStream.once('drain', resolve));
-              }
+              if (!inputStream.write(chunk)) await new Promise(r => inputStream.once('drain', r));
             }
           }
           inputStream.end();
         } catch (err) {
-          console.error('  ⚠️ Pipeline Input Error:', err.message);
           inputStream.destroy();
         }
       })();
 
-      req.on('close', () => {
-         command.kill('SIGKILL');
-         inputStream.destroy();
-      });
-
+      req.on('close', () => { command.kill('SIGKILL'); inputStream.destroy(); });
       return;
     }
 
-    // ─── Parse Range Header ───────────────────────────
+    // ─── Native High-Speed Stream Pipeline ───
     const range = req.headers.range;
-
     const nativeHeaders = {
       'Content-Type': mimeType,
       'Accept-Ranges': 'bytes',
@@ -267,142 +165,114 @@ export async function streamMedia(media, req, res) {
       'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length',
     };
 
-    if (isDownload) {
-      nativeHeaders['Content-Disposition'] = `attachment; filename="${media.fileName || 'video'}"`;
-    }
+    if (isDownload) nativeHeaders['Content-Disposition'] = `attachment; filename="${media.fileName || 'video'}"`;
 
     if (!range) {
-      // No range requested — send full file (200)
       nativeHeaders['Content-Length'] = fileSize;
       res.writeHead(200, nativeHeaders);
-
       const iter = client.iterDownload({
-        file: new Api.InputDocumentFileLocation({
-          id: document.id,
-          accessHash: document.accessHash,
-          fileReference: document.fileReference,
-          thumbSize: '',
-        }),
-      requestSize: 1024 * 1024, // 1MB chunks
+        file: new Api.InputDocumentFileLocation({ id: document.id, accessHash: document.accessHash, fileReference: document.fileReference, thumbSize: '' }),
+        requestSize: 1024 * 1024,
       });
-
       for await (const chunk of iter) {
         if (res.destroyed) return;
-        if (!res.write(chunk)) {
-          await new Promise(resolve => {
-            res.once('drain', resolve);
-            res.once('close', resolve);
-            res.once('error', resolve);
-          });
-        }
+        if (!res.write(chunk)) await new Promise(r => res.once('drain', r));
       }
-      if (!res.destroyed) return res.end();
+      return res.end();
     }
 
-    // ─── Range Request → 206 Partial Content ──────────
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
     
     if (start >= fileSize) {
-      res.writeHead(416, {
-        'Content-Range': `bytes */${fileSize}`,
-        'Content-Type': mimeType,
-      });
+      res.writeHead(416, { 'Content-Range': `bytes */${fileSize}`, 'Content-Type': mimeType });
       return res.end();
     }
 
-    // 2MB is the sweet spot for Cloud memory limits
-    const CHUNK_SIZE = 2 * 1024 * 1024;
+    // INCREASED to 5MB chunk. Less browser requests = fewer Telegram rate limits.
+    const CHUNK_SIZE = 5 * 1024 * 1024;
     const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + CHUNK_SIZE - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
     nativeHeaders['Content-Range'] = `bytes ${start}-${end}/${fileSize}`;
     nativeHeaders['Content-Length'] = chunkSize;
-    
     res.writeHead(206, nativeHeaders);
 
-    if (isRaw) {
-      console.log(`  📥 Loopback fetching: bytes ${start}-${end}/${fileSize}`);
-    }
-
-    // ─── THE FIX: Manual Byte-Perfect Chunking ───
+    // THE FIX: Concurrent Prefetching Queue
     let downloaded = 0;
-    const requestSize = 512 * 1024; // Telegram strictly requires 512KB atomic chunks
-    
-    // Calculate exact MTProto alignment
+    const requestSize = 512 * 1024; // Telegram atomic block
     let currentTelegramOffset = Math.floor(start / requestSize) * requestSize;
     let skipBytes = start - currentTelegramOffset;
+
+    // We will download 4 chunks (2MB) simultaneously to kill network latency
+    const PREFETCH_CONCURRENCY = 4; 
+    const activeFetches = []; 
+    let fetchOffset = currentTelegramOffset;
+
+    const fillQueue = () => {
+      while (activeFetches.length < PREFETCH_CONCURRENCY && fetchOffset <= end) {
+        const offsetForThisFetch = fetchOffset;
+        const fetchPromise = client.invoke(
+          new Api.upload.GetFile({
+            location: new Api.InputDocumentFileLocation({
+              id: document.id, accessHash: document.accessHash, fileReference: document.fileReference, thumbSize: ''
+            }),
+            offset: bigInt(offsetForThisFetch),
+            limit: requestSize,
+          })
+        ).then(res => res.bytes).catch(err => {
+           console.error(`  ⚠️ Fetch Error at offset ${offsetForThisFetch}:`, err.message);
+           return null; 
+        });
+
+        activeFetches.push(fetchPromise);
+        fetchOffset += requestSize;
+      }
+    };
 
     while (downloaded < chunkSize) {
       if (res.destroyed) break;
 
-      let chunkData;
-      try {
-        const fetchPromise = client.invoke(
-          new Api.upload.GetFile({
-            location: new Api.InputDocumentFileLocation({
-              id: document.id,
-              accessHash: document.accessHash,
-              fileReference: document.fileReference,
-              thumbSize: '',
-            }),
-            offset: bigInt(currentTelegramOffset),
-            limit: requestSize,
-          })
-        );
+      fillQueue(); // Keep background downloads active
 
-        // Protect against cloud host proxies dropping silent connections
-        const result = await Promise.race([
-          fetchPromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('CHUNK_TIMEOUT')), 15000))
-        ]);
-        
-        chunkData = result.bytes;
-      } catch (err) {
-        console.error('  ⚠️ Chunk download error:', err.message);
-        break; 
-      }
-      
+      if (activeFetches.length === 0) break;
+
+      // Pull the oldest chunk from the queue to maintain exact byte order
+      const chunkData = await activeFetches.shift();
+
       if (!chunkData || chunkData.length === 0) {
-        break; // Reached End of File
+        break; // EOF or Telegram rate limit hit
       }
 
       let dataToWrite = chunkData;
 
-      // 1. If it's the very first chunk fetched, trim the unaligned start bytes
       if (skipBytes > 0) {
         dataToWrite = chunkData.slice(skipBytes);
-        skipBytes = 0; // Only skip on the first fetch
+        skipBytes = 0; 
       }
 
-      // 2. Prevent sending more bytes than the HTTP Content-Length promised
       const remainingToSend = chunkSize - downloaded;
       if (dataToWrite.length > remainingToSend) {
         dataToWrite = dataToWrite.slice(0, remainingToSend);
       }
 
-      // 3. Write to Express response with strict backpressure handling
       if (!res.write(dataToWrite)) {
         await new Promise(resolve => res.once('drain', resolve));
       }
 
       downloaded += dataToWrite.length;
-      currentTelegramOffset += requestSize; // Move forward exactly 512KB to fetch the next block
     }
 
     if (!res.destroyed) res.end();
 
   } catch (err) {
     console.error('Streaming error:', err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Streaming failed' });
-    } else {
-      res.end();
-    }
+    if (!res.headersSent) res.status(500).json({ error: 'Streaming failed' });
+    else res.end();
   }
 }
 
-// ─── Helper: Subtitle Serving ───────────────────────
+// ─── Subtitle Serving ───
 function fileNameIsSub(name) {
   if (!name) return false;
   const lower = name.toLowerCase();
@@ -412,44 +282,27 @@ function fileNameIsSub(name) {
 async function serveSubtitle(client, document, fileName, res) {
   try {
     const iter = client.iterDownload({
-      file: new Api.InputDocumentFileLocation({
-        id: document.id,
-        accessHash: document.accessHash,
-        fileReference: document.fileReference,
-        thumbSize: '',
-      }),
-      requestSize: 1024 * 1024, // 1MB chunks (Subtitles are small)
+      file: new Api.InputDocumentFileLocation({ id: document.id, accessHash: document.accessHash, fileReference: document.fileReference, thumbSize: '' }),
+      requestSize: 1024 * 1024, 
     });
 
     let buffer = Buffer.alloc(0);
-    for await (const chunk of iter) {
-      buffer = Buffer.concat([buffer, chunk]);
-    }
-
+    for await (const chunk of iter) buffer = Buffer.concat([buffer, chunk]);
+    
     let textC = buffer.toString('utf8');
-
-    // Basic SRT to VTT Conversion
     if (fileName && fileName.toLowerCase().endsWith('.srt')) {
-      textC = textC.replace(/\r\n|\r/g, '\n');
-      // Convert timestamps: 00:00:20,000 --> 00:00:20.000
-      textC = textC.replace(/(\d{2}:\d{2}:\d{2}),(\d{2,3})/g, '$1.$2');
+      textC = textC.replace(/\r\n|\r/g, '\n').replace(/(\d{2}:\d{2}:\d{2}),(\d{2,3})/g, '$1.$2');
       textC = 'WEBVTT\n\n' + textC;
     } else if (fileName && fileName.toLowerCase().endsWith('.vtt')) {
-      if (!textC.trim().startsWith('WEBVTT')) {
-        textC = 'WEBVTT\n\n' + textC; // enforce webvtt header just in case
-      }
+      if (!textC.trim().startsWith('WEBVTT')) textC = 'WEBVTT\n\n' + textC; 
     }
 
-    const byteLength = Buffer.byteLength(textC);
     res.writeHead(200, {
-      'Content-Type': 'text/vtt',
-      'Content-Length': byteLength,
-      'Cache-Control': 'public, max-age=86400', // Cache for 1 Day
-      'Access-Control-Allow-Origin': '*'
+      'Content-Type': 'text/vtt', 'Content-Length': Buffer.byteLength(textC),
+      'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*'
     });
     res.end(textC);
   } catch (err) {
-    console.error('Subtitle streaming error:', err.message);
     if (!res.headersSent) res.status(500).end();
   }
 }
