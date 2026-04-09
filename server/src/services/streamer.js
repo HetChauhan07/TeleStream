@@ -111,9 +111,9 @@ export async function streamMedia(media, req, res) {
       console.log(`🎬 On-the-fly Transcoding: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
       const serverPort = process.env.PORT || 8000;
-      // Loopback URL. We use 127.0.0.1 + actual internal PORT to bypass proxy bottlenecks.
-      // This allows FFmpeg to make its own HTTP Range requests to find headers quickly.
-      const rawUrl = `http://127.0.0.1:${serverPort}${req.originalUrl}${req.originalUrl.includes('?') ? '&' : '?'}raw=true`;
+      // Stable internal URL using ID and Token
+      const token = req.query.token || '';
+      const rawUrl = `http://127.0.0.1:${serverPort}/api/stream/${media._id}?raw=true&token=${token}`;
 
       const headers = {
         'Content-Type': 'video/mp4',
@@ -137,8 +137,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
-        '-analyzeduration 10000000', // 10MB probe - more reliable for complex MKVs
-        '-probesize 10000000',
+        '-analyzeduration 5000000', // 5MB probe - safe balance for headers
+        '-probesize 5000000',
       ]);
 
       // Add time offset logic
@@ -148,13 +148,15 @@ export async function streamMedia(media, req, res) {
 
       const outputOptions = [
         '-preset ultrafast',
-        '-movflags frag_keyframe+empty_moov+default_base_moof', // added base_moof for better browser compatibility
-        '-c:v copy', 
+        '-tune zerolatency',
+        '-movflags frag_keyframe+empty_moov+default_base_moof',
+        '-c:v libx264', // RE-ENCODE in 720p to ensure universal browser compatibility
+        '-vf scale=-2:720', // LIMIT resolution to 720p to save Render CPU
+        '-crf 28',         // Reduce quality slightly to speed up encoding
         '-c:a aac',
         '-strict experimental',
-        '-map 0:v:0', // STRIP extra tracks
-        '-map 0:a:0?', // OPTIONAL audio mapping (don't crash if no audio)
-        '-map -0:s',   // Explicitly exclude all subtitles to avoid muxing errors
+        '-map 0:v:0',
+        '-map 0:a:0?',
         '-ignore_unknown',
         '-max_muxing_queue_size 1024',
         '-threads 0', 
