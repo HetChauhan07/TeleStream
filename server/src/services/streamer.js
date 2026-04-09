@@ -3,7 +3,7 @@ import { getTelegramClient } from './telegram.js';
 import bigInt from 'big-integer';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import { PassThrough, Readable } from 'stream';
+import { PassThrough } from 'stream';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const SUPPORTED_NATIVE_MIMES = ['video/mp4', 'video/webm', 'video/ogg', 'video/mp2t'];
@@ -110,6 +110,11 @@ export async function streamMedia(media, req, res) {
     if (needsTranscode && !isRaw) {
       console.log(`🎬 On-the-fly Transcoding: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
+      const serverPort = process.env.PORT || 8000;
+      // Loopback URL. We use 127.0.0.1 + actual internal PORT to bypass proxy bottlenecks.
+      // This allows FFmpeg to make its own HTTP Range requests to find headers quickly.
+      const rawUrl = `http://127.0.0.1:${serverPort}${req.originalUrl}${req.originalUrl.includes('?') ? '&' : '?'}raw=true`;
+
       const headers = {
         'Content-Type': 'video/mp4',
         'Transfer-Encoding': 'chunked',
@@ -124,26 +129,18 @@ export async function streamMedia(media, req, res) {
 
       res.writeHead(200, headers);
 
-      // ─── Direct Stream Input ───
-      // Instead of HTTP loopback (which fails on Render), we pipe the Telegram iterDownload 
-      // directly into ffmpeg. 
-      const telegramIter = client.iterDownload({
-        file: new Api.InputDocumentFileLocation({
-          id: document.id,
-          accessHash: document.accessHash,
-          fileReference: document.fileReference,
-          thumbSize: '',
-        }),
-        requestSize: 1024 * 1024,
-      });
+      const command = ffmpeg(rawUrl);
 
-      const inputStream = Readable.from(telegramIter);
-      const command = ffmpeg(inputStream);
+      // Add reconnection options for the input stream to handle transient network issues
+      command.inputOptions([
+        '-reconnect 1',
+        '-reconnect_streamed 1',
+        '-reconnect_at_eof 1',
+        '-reconnect_delay_max 5',
+      ]);
 
       // Add time offset logic
       if (startOffset) {
-        // use -ss BEFORE input for faster seeking if possible, but with streams it's tricky.
-        // ffmpeg will handle it by discarding.
         command.inputOptions([`-ss ${startOffset}`]);
       }
 
@@ -152,7 +149,7 @@ export async function streamMedia(media, req, res) {
         '-movflags frag_keyframe+empty_moov',
         '-c:v libx264',
         '-c:a aac',
-        '-threads 0', // Use all available (limited) cores
+        '-threads 0', 
       ];
 
       // Add scaler if quality is reduced
@@ -162,18 +159,23 @@ export async function streamMedia(media, req, res) {
 
       command.outputOptions(outputOptions)
         .toFormat('mp4')
+        .on('start', (cmdLine) => {
+          console.log('  FFmpeg started with command:', cmdLine);
+        })
         .on('error', (err) => {
           if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) {
-             console.error('FFmpeg Stream Error:', err.message);
+             console.error('  ❌ FFmpeg Stream Error:', err.message);
           }
           if (!res.headersSent) res.status(500).end();
+        })
+        .on('end', () => {
+          console.log('  🏁 FFmpeg transcoding finished.');
         });
         
       command.pipe(res, { end: true });
 
       req.on('close', () => {
          command.kill('SIGKILL');
-         inputStream.destroy();
       });
 
       return;
@@ -234,8 +236,9 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    // REDUCE chunk size to 1MB to prevent Render proxy timeouts due to Telegram IP throttling
-    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + 1024 * 1024 - 1, fileSize - 1); 
+    // INCREASE chunk size to 4MB to handle high-latency hosted proxies and reduce browser round-trips
+    const CHUNK_SIZE = 4 * 1024 * 1024;
+    const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + CHUNK_SIZE - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
     nativeHeaders['Content-Range'] = `bytes ${start}-${end}/${fileSize}`;
@@ -243,9 +246,12 @@ export async function streamMedia(media, req, res) {
     
     res.writeHead(206, nativeHeaders);
 
+    if (isRaw) {
+      console.log(`  📥 Loopback fetching: bytes ${start}-${end}/${fileSize}`);
+    }
+
     let downloaded = 0;
-    // USE 512KB strictly. Telegram's native part size is 512KB. 
-    // GramJS alignment works much faster and safer with 512KB offsets than 1MB.
+    // Standard Telegram chunking
     const requestSize = 512 * 1024;
     
     // GramJS throws corrupted bytes if offset is not perfectly aligned to 512KB.
