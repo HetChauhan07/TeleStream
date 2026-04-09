@@ -191,20 +191,49 @@ export async function streamMedia(media, req, res) {
       // Start fetching from Telegram and pipe into FFmpeg
       (async () => {
         try {
-          const iter = client.iterDownload({
-            file: new Api.InputDocumentFileLocation({
-              id: document.id,
-              accessHash: document.accessHash,
-              fileReference: document.fileReference,
-              thumbSize: '',
-            }),
-            requestSize: 2048 * 1024, // 2MB chunks for faster throughput
-          });
+          const CHUNK_SIZE = 512 * 1024; // 512KB is the Telegram atomic size
+          const PREFETCH_WINDOW = 4;      // How many chunks to fetch in parallel
+          let currentOffset = 0;
+          let isFetching = true;
 
-          for await (const chunk of iter) {
+          // Helper to fetch a single chunk
+          const fetchChunk = async (offset) => {
+            if (offset >= fileSize) return null;
+            const limit = Math.min(CHUNK_SIZE, fileSize - offset);
+            return await client.downloadFile(
+              new Api.InputDocumentFileLocation({
+                id: document.id,
+                accessHash: document.accessHash,
+                fileReference: document.fileReference,
+                thumbSize: '',
+              }),
+              { offset: bigInt(offset), limit: limit }
+            );
+          };
+
+          // Queue logic: we keep 4 chunks "in flight" at all times
+          let nextOffsetToQueue = 0;
+          const activeRequests = new Map(); // offset -> promise
+
+          while (nextOffsetToQueue < fileSize || activeRequests.size > 0) {
             if (res.destroyed || inputStream.destroyed) break;
-            if (!inputStream.write(chunk)) {
-              await new Promise(resolve => inputStream.once('drain', resolve));
+
+            // Fill the prefetch window
+            while (activeRequests.size < PREFETCH_WINDOW && nextOffsetToQueue < fileSize) {
+              const offset = nextOffsetToQueue;
+              activeRequests.set(offset, fetchChunk(offset));
+              nextOffsetToQueue += CHUNK_SIZE;
+            }
+
+            // Get the oldest chunk
+            const oldestOffset = Math.min(...activeRequests.keys());
+            const chunk = await activeRequests.get(oldestOffset);
+            activeRequests.delete(oldestOffset);
+
+            if (chunk) {
+              if (!inputStream.write(chunk)) {
+                await new Promise(resolve => inputStream.once('drain', resolve));
+              }
             }
           }
           inputStream.end();
