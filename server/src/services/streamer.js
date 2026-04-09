@@ -131,8 +131,10 @@ export async function streamMedia(media, req, res) {
 
       // Add reconnection options for the input stream to handle transient network issues
       command.inputOptions([
-        '-analyzeduration 10000000', // 10MB probe
-        '-probesize 10000000',
+        '-analyzeduration 1000000', // 1MB probe - MUCH faster startup
+        '-probesize 1000000',
+        '-fflags +nobuffer',
+        '-flags +low_delay',
       ]);
 
       // Add time offset logic
@@ -196,7 +198,7 @@ export async function streamMedia(media, req, res) {
               fileReference: document.fileReference,
               thumbSize: '',
             }),
-            requestSize: 1024 * 1024, // 1MB chunks
+            requestSize: 2048 * 1024, // 2MB chunks for faster throughput
           });
 
           for await (const chunk of iter) {
