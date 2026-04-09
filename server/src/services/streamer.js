@@ -149,10 +149,6 @@ export async function streamMedia(media, req, res) {
         '-preset ultrafast',
         '-tune zerolatency',
         '-movflags frag_keyframe+empty_moov', 
-        '-c:v libx264',
-        '-pix_fmt yuv420p', // FORCED Browser compatibility
-        '-vf scale=-2:720', // Cap at 720p for Render CPU safety
-        '-crf 28',
         '-c:a aac',
         '-strict experimental',
         '-map 0:v:0',
@@ -163,9 +159,17 @@ export async function streamMedia(media, req, res) {
         '-threads 0', 
       ];
 
-      // Add scaler if quality is reduced
-      if (quality && quality !== 'original') {
+      // SMART COMPATIBILITY:
+      // If no specific quality is requested, we REMUX (copy) to save 100% CPU.
+      // This is the "Golden Rule" for Render Free Tier.
+      if (!quality || quality === 'original') {
+        outputOptions.push('-c:v copy');
+      } else {
+        // If user explicitly asks for 720, 480 etc, we MUST transcode.
+        outputOptions.push('-c:v libx264');
+        outputOptions.push('-pix_fmt yuv420p');
         outputOptions.push(`-vf scale=-2:${quality}`);
+        outputOptions.push('-crf 28');
       }
 
       command.outputOptions(outputOptions)
