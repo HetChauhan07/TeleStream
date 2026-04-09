@@ -2,6 +2,12 @@ import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import { NewMessage } from 'telegram/events/index.js';
 import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let client = null;
 
@@ -45,10 +51,31 @@ export async function initTelegram() {
       onError: (err) => console.error('Auth error:', err),
     });
 
-    // Save session string — user should copy this to .env
+    // Save session string
     const savedSession = client.session.save();
-    console.log('\n✅ Logged in! Copy this session string to your .env file:');
-    console.log(`TELEGRAM_SESSION=${savedSession}\n`);
+    console.log('\n✅ Logged in!');
+
+    // Automatically update .env file
+    try {
+      const envPath = path.join(__dirname, '../../.env');
+      let envContent = '';
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf8');
+      }
+
+      const sessionLine = `TELEGRAM_SESSION=${savedSession}`;
+      if (envContent.includes('TELEGRAM_SESSION=')) {
+        envContent = envContent.replace(/TELEGRAM_SESSION=.*/, sessionLine);
+      } else {
+        envContent += `\n${sessionLine}\n`;
+      }
+
+      fs.writeFileSync(envPath, envContent, 'utf8');
+      console.log('✅ Session string automatically saved to your .env file!');
+    } catch (err) {
+      console.warn('⚠️ Could not auto-save to .env. Please copy the line manually:');
+      console.log(`TELEGRAM_SESSION=${savedSession}\n`);
+    }
   } else {
     try {
       const connectPromise = client.connect();
@@ -57,11 +84,13 @@ export async function initTelegram() {
       );
       await Promise.race([connectPromise, timeoutPromise]);
     } catch (err) {
-      if (err.message.includes('406') || err.message.includes('AUTH_KEY_DUPLICATED')) {
+      const isAuthError = err.message.includes('406') || err.message.includes('AUTH_KEY_DUPLICATED');
+      if (isAuthError) {
         console.error('\n❌ Telegram Connection Error: AUTH_KEY_DUPLICATED (406)');
         console.error('   This happens when your hosted server (Render) and local server try to use the same session simultaneously.');
-        console.error('   👉 FIX: Stop the Render service temporarily, OR delete your local .env TELEGRAM_SESSION to re-login with a new key.\n');
+        console.error('   👉 FIX: Either stop the Render service OR delete your local .env TELEGRAM_SESSION and restart to re-login.\n');
       }
+      client = null; // Clear the broken client
       throw err;
     }
   }
