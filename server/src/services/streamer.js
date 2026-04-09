@@ -137,6 +137,8 @@ export async function streamMedia(media, req, res) {
         '-reconnect_streamed 1',
         '-reconnect_at_eof 1',
         '-reconnect_delay_max 5',
+        '-analyzeduration 1000000', // Limit probing to 1s to speed up metadata fetch
+        '-probesize 1000000',
       ]);
 
       // Add time offset logic
@@ -145,10 +147,13 @@ export async function streamMedia(media, req, res) {
       }
 
       const outputOptions = [
-        '-preset ultrafast', // Essential for Render Free Tier
+        '-preset ultrafast',
         '-movflags frag_keyframe+empty_moov',
-        '-c:v libx264',
+        '-c:v copy', // USE STREAM COPY - Essential for Render Free Tier (Zero CPU usage)
         '-c:a aac',
+        '-strict experimental',
+        '-map 0',
+        '-max_muxing_queue_size 1024',
         '-threads 0', 
       ];
 
@@ -236,8 +241,8 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    // INCREASE chunk size to 4MB to handle high-latency hosted proxies and reduce browser round-trips
-    const CHUNK_SIZE = 4 * 1024 * 1024;
+    // 2MB is the sweet spot for Render Free Tier memory (512MB)
+    const CHUNK_SIZE = 2 * 1024 * 1024;
     const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + CHUNK_SIZE - 1, fileSize - 1); 
     const chunkSize = end - start + 1;
 
