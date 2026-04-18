@@ -93,7 +93,7 @@ export default function BrowsePage() {
         <SkeletonGrid count={12} />
       ) : movies.length === 0 ? (
         <EmptyState
-          icon="🔍"
+          icon=""
           title="No results"
           subtitle={
             search

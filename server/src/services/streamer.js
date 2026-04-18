@@ -44,7 +44,7 @@ export async function streamMedia(media, req, res) {
       ]);
     } catch (err) {
       if (err.message === 'TIMEOUT') {
-        console.log('⚠️ Telegram socket dropped! Reconnecting...');
+        console.log('Telegram socket dropped! Reconnecting...');
         await client.connect();
         messages = await client.getMessages(channelId, { ids: [messageId] });
       } else {
@@ -79,7 +79,7 @@ export async function streamMedia(media, req, res) {
 
     // ─── FFmpeg Transcode Pipeline ───
     if (needsTranscode && !isRaw) {
-      console.log(`🎬 Transcode Pipeline: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
+      console.log(`Transcode Pipeline: ${mimeType} | Quality: ${quality || 'original'} | Start: ${startOffset || 0}s`);
       
       const headers = {
         'Content-Type': 'video/mp4',
@@ -107,7 +107,7 @@ export async function streamMedia(media, req, res) {
       command.outputOptions(outputOptions)
         .toFormat('mp4')
         .on('error', (err) => {
-          if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) console.error('  ❌ Pipeline Error:', err.message);
+          if (!err.message.includes('SIGKILL') && !err.message.includes('Output stream closed')) console.error('  Pipeline Error:', err.message);
           if (!res.headersSent) res.status(500).end();
           inputStream.destroy();
         })
@@ -221,7 +221,7 @@ export async function streamMedia(media, req, res) {
             limit: requestSize,
           })
         ).then(res => res.bytes).catch(err => {
-           console.error(`  ⚠️ Fetch Error at offset ${offsetForThisFetch}:`, err.message);
+           console.error(`  Fetch Error at offset ${offsetForThisFetch}:`, err.message);
            return null; 
         });
 

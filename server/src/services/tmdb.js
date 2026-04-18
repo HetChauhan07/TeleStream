@@ -6,7 +6,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p';
 function getApiKey() {
   const key = process.env.TMDB_API_KEY;
   if (!key || key === 'your_tmdb_api_key_here') {
-    console.warn('⚠️  TMDB_API_KEY not configured — metadata lookup disabled');
+    console.warn('TMDB_API_KEY not configured — metadata lookup disabled');
     return null;
   }
   return key;
@@ -151,15 +151,23 @@ export function parseFileName(fileName) {
     name = name.substring(0, tvMatch.index).trim();
   }
 
-  // Multi-Part Movie Pattern detection (Part 1, Pt 2, cd1, disc 2)
+  // Multi-Part Movie Pattern detection
+  // Priority: cd/disc first (file splits), then part/pt as fallback
   let partNumber = 0;
   if (type === 'movie') {
-    const partPattern = /\b(?:part|pt|cd|disc)\s*[-_]?\s*(\d{1,2})\b/i;
-    const partMatch = name.match(partPattern);
-    
-    if (partMatch) {
-      partNumber = parseInt(partMatch[1], 10);
-      name = name.replace(partPattern, '').trim();
+    const cdPattern = /\b(?:cd|disc)\s*[-_]?\s*(\d{1,2})\b/i;
+    const cdMatch = name.match(cdPattern);
+
+    if (cdMatch) {
+      partNumber = parseInt(cdMatch[1], 10);
+      name = name.replace(cdPattern, '').trim();
+    } else {
+      const partPattern = /\b(?:part|pt)\s*[-_]?\s*(\d{1,2})\b/i;
+      const partMatch = name.match(partPattern);
+      if (partMatch) {
+        partNumber = parseInt(partMatch[1], 10);
+        name = name.replace(partPattern, '').trim();
+      }
     }
   }
 

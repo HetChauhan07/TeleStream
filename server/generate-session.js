@@ -9,22 +9,22 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
 
 (async () => {
-  console.log('\n🔑 TeleStream — Telegram Session Generator\n');
+  console.log('\nTeleStream -- Telegram Session Generator\n');
   
   const client = new TelegramClient(new StringSession(''), API_ID, API_HASH, {
     connectionRetries: 5,
   });
 
   await client.start({
-    phoneNumber: async () => await ask('📱 Enter your phone number (with country code, e.g. +91...): '),
-    password: async () => await ask('🔒 Enter your 2FA password (if enabled, or press Enter): '),
-    phoneCode: async () => await ask('📨 Enter the code Telegram sent you: '),
+    phoneNumber: async () => await ask('Enter your phone number (with country code, e.g. +91...): '),
+    password: async () => await ask('Enter your 2FA password (if enabled, or press Enter): '),
+    phoneCode: async () => await ask('Enter the code Telegram sent you: '),
     onError: (err) => console.error('Error:', err),
   });
 
   const session = client.session.save();
   
-  console.log('\n✅ Session generated successfully!\n');
+  console.log('\nSession generated successfully!\n');
   console.log('═══════════════════════════════════════════════════');
   console.log('Copy this ENTIRE string and paste it as TELEGRAM_SESSION in your .env file:\n');
   console.log(session);

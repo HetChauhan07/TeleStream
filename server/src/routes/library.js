@@ -14,9 +14,10 @@ router.get('/', async (req, res) => {
 
     let matchQuery = {};
 
-    // Text search
+    // Text search (regex for partial/prefix matching)
     if (q) {
-      matchQuery.$text = { $search: q };
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      matchQuery.title = { $regex: escaped, $options: 'i' };
     }
 
     // Genre filter

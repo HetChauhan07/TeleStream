@@ -55,11 +55,11 @@ export async function indexChannel() {
   const channelId = process.env.TELEGRAM_CHANNEL_ID;
 
   if (!channelId) {
-    console.error('❌ TELEGRAM_CHANNEL_ID not set in .env');
+    console.error('TELEGRAM_CHANNEL_ID not set in .env');
     return { added: 0, skipped: 0, errors: 0 };
   }
 
-  console.log('🔍 Scanning Telegram channel for videos...');
+  console.log('Scanning Telegram channel for videos...');
 
   let added = 0;
   let skipped = 0;
@@ -116,7 +116,7 @@ export async function indexChannel() {
           // Consider "broken" if it's a video but missing TMDB ID 
           if (!isSubtitle && !exists.tmdbId) {
             isBroken = true;
-            console.log(`  🔧 Re-syncing incomplete metadata for: "${exists.title}"...`);
+            console.log(`  Re-syncing incomplete metadata for: "${exists.title}"...`);
           } else {
             skipped++;
             continue;
@@ -150,25 +150,25 @@ export async function indexChannel() {
             }
             if (probeChunk && probeChunk.length >= 8) {
               if (probeChunk[0] === 0x47) {
-                console.log(`  🔍 Deep probe: "${fileName}" is actually MPEG-TS (video/mp2t)`);
+                console.log(`  Deep probe: "${fileName}" is actually MPEG-TS (video/mp2t)`);
                 initialMime = 'video/mp2t';
               }
             }
           } catch (e) {
-            console.warn('  ⚠️ Deep probe failed:', e.message);
+            console.warn('  Deep probe failed:', e.message);
           }
         }
         
         if (isSubtitle) {
           type = 'subtitle';
-          console.log(`  📝 Found Subtitle: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
+          console.log(`  Found Subtitle: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
         } else {
           if (type === 'tv') {
-            console.log(`  📼 Found TV Episode: "${title}" S${seasonNumber}E${episodeNumber}`);
+            console.log(`  Found TV Episode: "${title}" S${seasonNumber}E${episodeNumber}`);
           } else if (partNumber && partNumber > 0) {
-            console.log(`  📼 Found Movie Multi-part: "${title}" Part ${partNumber}`);
+            console.log(`  Found Movie Multi-part: "${title}" Part ${partNumber}`);
           } else {
-            console.log(`  📼 Found Movie: "${title}" (${year || 'unknown year'})`);
+            console.log(`  Found Movie: "${title}" (${year || 'unknown year'})`);
           }
         }
 
@@ -183,7 +183,7 @@ export async function indexChannel() {
           if (tmdbCache.has(cacheKey)) {
             metadata = tmdbCache.get(cacheKey);
             searchResultId = metadata.tmdbId;
-            console.log(`  ⚡ Using Cached TMDB Metadata for: "${title}"`);
+            console.log(`  Using Cached TMDB Metadata for: "${title}"`);
           } else {
             const searchResult = await searchMedia(title, year, type);
             if (searchResult) {
@@ -238,27 +238,27 @@ export async function indexChannel() {
 
         if (isBroken) {
           await Media.updateOne({ _id: exists._id }, { $set: mediaPayload });
-          console.log(`  ✅ Fixed: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
+          console.log(`  Fixed: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
         } else {
           await Media.create(mediaPayload);
           added++;
-          console.log(`  ✅ Indexed: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
+          console.log(`  Indexed: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
         }
 
         // Small delay to avoid rate limits
         await new Promise((r) => setTimeout(r, 500));
 
       } catch (msgErr) {
-        console.error(`  ❌ Error processing message ${message.id}:`, msgErr.message);
+        console.error(`  Error processing message ${message.id}:`, msgErr.message);
         errors++;
       }
     }
     
     scannerFinished = true; // Mark as successful if we reach the end of the loop
-    console.log('✅ Telegram scan completed successfully.');
+    console.log('Telegram scan completed successfully.');
 
   } catch (err) {
-    console.error('❌ Channel scan failed partway:', err.message);
+    console.error('Channel scan failed partway:', err.message);
   }
 
   // ─── Two-Way Sync Cleanup ──────────
@@ -267,7 +267,7 @@ export async function indexChannel() {
   if (scannerFinished) {
     try {
       const activeIdsArray = Array.from(activeTelegramIds);
-      console.log(`🧹 Sync cleanup: verifying ${activeIdsArray.length} active messages...`);
+      console.log(`Sync cleanup: verifying ${activeIdsArray.length} active messages...`);
       
       const deleteResult = await Media.deleteMany({
         telegramChannelId: channelId,
@@ -275,17 +275,17 @@ export async function indexChannel() {
       });
       
       if (deleteResult.deletedCount > 0) {
-        console.log(`  🗑️ Removed ${deleteResult.deletedCount} orphaned media entries (deleted from Telegram) from the database.`);
+        console.log(`  Removed ${deleteResult.deletedCount} orphaned media entries (deleted from Telegram) from the database.`);
       } else {
-        console.log('  ✨ No orphaned entries found.');
+        console.log('  No orphaned entries found.');
       }
     } catch (cleanupErr) {
-      console.error('❌ Cleanup failed:', cleanupErr.message);
+      console.error('Cleanup failed:', cleanupErr.message);
     }
   } else {
-    console.warn('⚠️ Scan did not finish successfully; skipping database cleanup to prevent data loss.');
+    console.warn('Scan did not finish successfully; skipping database cleanup to prevent data loss.');
   }
 
-  console.log(`\n📊 Indexing complete: ${added} added, ${skipped} skipped, ${errors} errors`);
+  console.log(`\nIndexing complete: ${added} added, ${skipped} skipped, ${errors} errors`);
   return { added, skipped, errors };
 }

@@ -224,7 +224,7 @@ export default function MoviePage() {
                       {part.backdropPath || part.posterPath ? (
                         <img src={part.backdropPath || part.posterPath} alt={`Part ${part.partNumber}`} />
                       ) : (
-                        <div className="episode-card__no-image">🎬</div>
+                        <div className="episode-card__no-image"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 12h18" /><path d="M17 3v18" /></svg></div>
                       )}
                       
                       <div className="episode-card__play-icon">
@@ -277,7 +277,7 @@ export default function MoviePage() {
                       {ep.episodeStillPath ? (
                         <img src={ep.episodeStillPath} alt={ep.episodeTitle || `Episode ${ep.episodeNumber}`} />
                       ) : (
-                        <div className="episode-card__no-image">🎬</div>
+                        <div className="episode-card__no-image"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 12h18" /><path d="M17 3v18" /></svg></div>
                       )}
                       
                       <div className="episode-card__play-icon">

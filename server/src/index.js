@@ -79,9 +79,9 @@ async function seedAdmin() {
       password: adminPass,
       role: 'admin',
     });
-    console.log(`👑 Admin account created: ${adminUser} / ${adminPass}`);
+    console.log(`Admin account created: ${adminUser} / ${adminPass}`);
   } else {
-    console.log(`👑 Admin account exists: ${adminUser}`);
+    console.log(`Admin account exists: ${adminUser}`);
   }
 }
 
@@ -89,14 +89,14 @@ async function seedAdmin() {
 async function start() {
   console.log(`
   ╔══════════════════════════════════════╗
-  ║      ⚡ TeleStream Server ⚡        ║
+  ║      TeleStream Server            ║
   ║   Telegram-backed Media Streaming   ║
   ╚══════════════════════════════════════╝
   `);
 
   // 1. Start Express server FIRST so Render detects the port immediately
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🌐 Server running at http://0.0.0.0:${PORT}`);
+    console.log(`\nServer running at http://0.0.0.0:${PORT}`);
     console.log(`   API docs:`);
     console.log(`   • POST /api/auth/login       — Login`);
     console.log(`   • POST /api/auth/register    — Create user (admin)`);
@@ -118,29 +118,29 @@ async function start() {
     // Mark server as ready as soon as DB is connected
     // Library can serve cached movies from MongoDB even without Telegram
     serverReady = true;
-    console.log('✅ Database ready — server is accepting requests!');
+    console.log('Database ready -- server is accepting requests!');
 
     // Initialize Telegram separately (non-blocking for server readiness)
     try {
       await initTelegram();
-      console.log('✅ Telegram connected!');
+      console.log('Telegram connected!');
 
       // Auto-index on startup (non-blocking)
-      console.log('\n🚀 Running initial index...');
+      console.log('\nRunning initial index...');
       indexChannel().catch((err) => {
         console.error('Initial indexing failed:', err.message);
       });
     } catch (telegramErr) {
-      console.error('⚠️ Telegram initialization failed:', telegramErr.message);
+      console.error('Telegram initialization failed:', telegramErr.message);
       console.error('   Library will serve cached data. Streaming/indexing will not work until Telegram reconnects.');
     }
   } catch (err) {
-    console.error('⚠️ Database initialization error:', err.message);
+    console.error('Database initialization error:', err.message);
     console.error('   Server is running but no data can be served.');
   }
 }
 
 start().catch((err) => {
-  console.error('💥 Failed to start server:', err);
+  console.error('Failed to start server:', err);
   process.exit(1);
 });

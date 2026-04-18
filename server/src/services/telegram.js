@@ -43,17 +43,17 @@ export async function initTelegram() {
 
   // If no session saved, do interactive login
   if (!sessionStr) {
-    console.log('\n🔐 First-time Telegram login required...');
+    console.log('\nFirst-time Telegram login required...');
     await client.start({
-      phoneNumber: async () => await prompt('📱 Enter your phone number: '),
-      password: async () => await prompt('🔑 Enter your 2FA password (or press Enter): '),
-      phoneCode: async () => await prompt('💬 Enter the code you received: '),
+      phoneNumber: async () => await prompt('Enter your phone number: '),
+      password: async () => await prompt('Enter your 2FA password (or press Enter): '),
+      phoneCode: async () => await prompt('Enter the code you received: '),
       onError: (err) => console.error('Auth error:', err),
     });
 
     // Save session string
     const savedSession = client.session.save();
-    console.log('\n✅ Logged in!');
+    console.log('\nLogged in!');
 
     // Automatically update .env file
     try {
@@ -71,9 +71,9 @@ export async function initTelegram() {
       }
 
       fs.writeFileSync(envPath, envContent, 'utf8');
-      console.log('✅ Session string automatically saved to your .env file!');
+      console.log('Session string automatically saved to your .env file!');
     } catch (err) {
-      console.warn('⚠️ Could not auto-save to .env. Please copy the line manually:');
+      console.warn('Could not auto-save to .env. Please copy the line manually:');
       console.log(`TELEGRAM_SESSION=${savedSession}\n`);
     }
   } else {
@@ -86,9 +86,9 @@ export async function initTelegram() {
     } catch (err) {
       const isAuthError = err.message.includes('406') || err.message.includes('AUTH_KEY_DUPLICATED');
       if (isAuthError) {
-        console.error('\n❌ Telegram Connection Error: AUTH_KEY_DUPLICATED (406)');
+        console.error('\nTelegram Connection Error: AUTH_KEY_DUPLICATED (406)');
         console.error('   This happens when your hosted server (Render) and local server try to use the same session simultaneously.');
-        console.error('   👉 FIX: Either stop the Render service OR delete your local .env TELEGRAM_SESSION and restart to re-login.\n');
+        console.error('   FIX: Either stop the Render service OR delete your local .env TELEGRAM_SESSION and restart to re-login.\n');
       }
       client = null; // Clear the broken client
       throw err;
@@ -97,11 +97,11 @@ export async function initTelegram() {
   
   // ─── Connection Resilience ──────────────────────────
   client.on('disconnected', () => {
-    console.warn('⚠️ Telegram client disconnected! Attempting to reconnect...');
+    console.warn('Telegram client disconnected! Attempting to reconnect...');
     client.connect().catch(err => console.error('Reconnect failed:', err.message));
   });
 
-  console.log('✅ Telegram client connected');
+  console.log('Telegram client connected');
   return client;
 }
 
@@ -123,7 +123,7 @@ export async function uploadFileToChannel(channelId, filePath, caption) {
     throw new Error('Telegram client not initialized.');
   }
   
-  console.log(`📤 Uploading file to Telegram: ${caption}`);
+  console.log(`Uploading file to Telegram: ${caption}`);
 
   const result = await client.sendFile(channelId, {
     file: filePath,
@@ -131,7 +131,7 @@ export async function uploadFileToChannel(channelId, filePath, caption) {
     forceDocument: true, // Send as document to avoid compression
   });
 
-  console.log(`✅ Upload successful: message ID ${result.id}`);
+  console.log(`Upload successful: message ID ${result.id}`);
   return result;
 }
 
