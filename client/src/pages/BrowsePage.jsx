@@ -4,8 +4,12 @@ import MediaGrid from '../components/MediaGrid';
 import SearchBar from '../components/SearchBar';
 import GenreFilter from '../components/GenreFilter';
 import { SkeletonGrid, EmptyState } from '../components/Loader';
+import { useSearchParams } from 'react-router-dom';
 
 export default function BrowsePage() {
+  const [searchParams] = useSearchParams();
+  const typeParam = searchParams.get('type');
+  
   const [movies, setMovies] = useState([]);
   const [genres, setGenresState] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +24,7 @@ export default function BrowsePage() {
       const params = { sort, order: sortOrder };
       if (search) params.q = search;
       if (selectedGenre) params.genre = selectedGenre;
+      if (typeParam) params.type = typeParam;
 
       const data = await getLibrary(params);
       setMovies(data);
@@ -28,7 +33,7 @@ export default function BrowsePage() {
     } finally {
       setLoading(false);
     }
-  }, [search, selectedGenre, sort, sortOrder]);
+  }, [search, selectedGenre, sort, sortOrder, typeParam]);
 
   useEffect(() => {
     fetchMovies();

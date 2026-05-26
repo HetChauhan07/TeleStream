@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getMediaRequests, deleteMediaRequest } from '../api/client';
 
 export default function AdminPage() {
   // User Management State
@@ -10,11 +11,23 @@ export default function AdminPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const [requests, setRequests] = useState([]);
+
   const token = localStorage.getItem('token');
 
   useEffect(() => {
     fetchUsers();
+    fetchRequests();
   }, []);
+
+  async function fetchRequests() {
+    try {
+      const data = await getMediaRequests();
+      setRequests(data);
+    } catch (err) {
+      console.error('Failed to fetch requests', err);
+    }
+  }
 
   async function fetchUsers() {
     try {
@@ -85,6 +98,17 @@ export default function AdminPage() {
       fetchUsers();
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function handleDeleteReq(id, title) {
+    if (!window.confirm(`Are you sure you want to delete the request for "${title}"?`)) return;
+    try {
+      await deleteMediaRequest(id);
+      fetchRequests();
+      setSuccess(`Request for "${title}" deleted`);
+    } catch (err) {
+      setError('Failed to delete request');
     }
   }
 
@@ -242,6 +266,55 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
+
+        {/* ─── Media Requests List ─── */}
+        <div className="admin-grid" style={{ gridTemplateColumns: '1fr', marginTop: '2rem' }}>
+          <div className="admin-card">
+            <h2 className="admin-card__title">
+              User Demands <span className="admin-card__count">{requests.length}</span>
+            </h2>
+            <div className="admin-users" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              {requests.map((req) => (
+                <div key={req._id} className="admin-user">
+                  <div className="admin-user__info">
+                    <span className="admin-user__avatar" style={{ display: 'flex', alignItems: 'center' }}>
+                      {req.posterPath ? (
+                        <img src={req.posterPath} alt={req.title} style={{ width: '32px', height: '48px', objectFit: 'cover', borderRadius: '4px' }} />
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                          <polyline points="17 2 12 7 7 2"></polyline>
+                        </svg>
+                      )}
+                    </span>
+                    <div>
+                      <div className="admin-user__name">
+                        {req.title} {req.releaseYear ? `(${req.releaseYear})` : ''}
+                      </div>
+                      <div className="admin-user__role">
+                        {req.type === 'movie' ? 'Movie' : 'TV'} • Requested by {req.user?.username || 'Unknown'} • {new Date(req.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="admin-user__delete"
+                    onClick={() => handleDeleteReq(req._id, req.title)}
+                    title="Delete Request"
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {requests.length === 0 && <p className="admin-users__empty">No pending requests</p>}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

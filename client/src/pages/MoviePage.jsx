@@ -1,15 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getMediaById } from '../api/client';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { getMediaById, getWatchlist, addToWatchlist, removeFromWatchlist } from '../api/client';
 import { Spinner } from '../components/Loader';
+import { Plus, Check } from 'lucide-react';
 
 export default function MoviePage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSeason, setSelectedSeason] = useState(1);
+  const [inWatchlist, setInWatchlist] = useState(false);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
   
-
+  const savedUser = localStorage.getItem('user');
+  const user = savedUser ? JSON.parse(savedUser) : null;
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     async function fetchMovie() {
@@ -22,6 +28,12 @@ export default function MoviePage() {
           const seasons = [...new Set(data.episodes.map(e => e.seasonNumber))].sort((a,b) => a - b);
           setSelectedSeason(seasons[0]);
         }
+        
+        // Check watchlist
+        try {
+          const wl = await getWatchlist();
+          setInWatchlist(wl.some(m => m._id === id));
+        } catch (err) {}
       } catch (err) {
         console.error('Failed to fetch movie:', err);
       } finally {
@@ -30,6 +42,52 @@ export default function MoviePage() {
     }
     fetchMovie();
   }, [id]);
+
+  const toggleWatchlist = async () => {
+    try {
+      setWatchlistLoading(true);
+      if (inWatchlist) {
+        await removeFromWatchlist(id);
+        setInWatchlist(false);
+      } else {
+        await addToWatchlist(id);
+        setInWatchlist(true);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setWatchlistLoading(false);
+    }
+  };
+
+  const handleDeleteMedia = async (e, mediaId, title) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${title}" from the database AND Telegram?`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const baseUrl = import.meta.env.VITE_API_URL || 'https://telestream-jgee.onrender.com/api';
+      const res = await fetch(`${baseUrl}/library/${mediaId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      alert(`Media "${title}" deleted successfully`);
+      if (mediaId === id) {
+        navigate('/browse');
+      } else {
+        const updatedMovie = await getMediaById(id);
+        setMovie(updatedMovie);
+      }
+    } catch (err) {
+      alert('Error deleting: ' + err.message);
+    }
+  };
 
   const uniqueSeasons = useMemo(() => {
     if (!movie || movie.type !== 'tv' || !movie.episodes) return [];
@@ -176,9 +234,34 @@ export default function MoviePage() {
               {mainAction.label}
             </Link>
 
+            <button 
+              className="btn btn--secondary" 
+              onClick={toggleWatchlist}
+              disabled={watchlistLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {inWatchlist ? <Check size={18} /> : <Plus size={18} />}
+              {inWatchlist ? 'My List' : 'My List'}
+            </button>
+
             <Link to="/browse" className="btn btn--secondary">
               ← Back to Library
             </Link>
+
+            {isAdmin && (
+              <button 
+                className="btn" 
+                onClick={(e) => handleDeleteMedia(e, movie._id, movie.title)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderColor: 'transparent' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+                Delete Media
+              </button>
+            )}
           </div>
 
           <div className="movie-page__info-grid">
@@ -219,7 +302,25 @@ export default function MoviePage() {
 
               <div className="movie-page__episodes-list">
                 {movie.parts.map(part => (
-                  <Link key={part._id} to={`/play/${part._id}`} className="episode-card">
+                  <Link key={part._id} to={`/play/${part._id}`} className="episode-card" style={{ position: 'relative' }}>
+                    {isAdmin && (
+                      <button 
+                        onClick={(e) => handleDeleteMedia(e, part._id, `Part ${part.partNumber}`)}
+                        title="Delete part from DB and Telegram"
+                        style={{ 
+                          position: 'absolute', top: '8px', right: '8px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                          background: 'rgba(239, 68, 68, 0.85)', color: 'white',
+                          border: 'none', padding: '6px', borderRadius: '6px', cursor: 'pointer', zIndex: 10 
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                      </button>
+                    )}
                     <div className="episode-card__image">
                       {part.backdropPath || part.posterPath ? (
                         <img src={part.backdropPath || part.posterPath} alt={`Part ${part.partNumber}`} />
@@ -272,7 +373,25 @@ export default function MoviePage() {
                 {movie.episodes
                   .filter(e => e.seasonNumber === selectedSeason)
                   .map(ep => (
-                  <Link key={ep._id} to={`/play/${ep._id}`} className="episode-card">
+                  <Link key={ep._id} to={`/play/${ep._id}`} className="episode-card" style={{ position: 'relative' }}>
+                    {isAdmin && (
+                      <button 
+                        onClick={(e) => handleDeleteMedia(e, ep._id, ep.episodeTitle || `Episode ${ep.episodeNumber}`)}
+                        title="Delete episode from DB and Telegram"
+                        style={{ 
+                          position: 'absolute', top: '8px', right: '8px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                          background: 'rgba(239, 68, 68, 0.85)', color: 'white',
+                          border: 'none', padding: '6px', borderRadius: '6px', cursor: 'pointer', zIndex: 10 
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                      </button>
+                    )}
                     <div className="episode-card__image">
                       {ep.episodeStillPath ? (
                         <img src={ep.episodeStillPath} alt={ep.episodeTitle || `Episode ${ep.episodeNumber}`} />

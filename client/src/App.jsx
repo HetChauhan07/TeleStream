@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
@@ -77,6 +77,7 @@ export default function App() {
                 {user.role === 'admin' && (
                   <Route path="/admin" element={<AdminPage />} />
                 )}
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </>
           }

@@ -89,6 +89,22 @@ export async function getContinueWatching() {
   return data;
 }
 
+// ─── Watchlist ───────────────────────────────────────
+export async function getWatchlist() {
+  const { data } = await api.get('/watchlist');
+  return data;
+}
+
+export async function addToWatchlist(mediaId) {
+  const { data } = await api.post(`/watchlist/${mediaId}`);
+  return data;
+}
+
+export async function removeFromWatchlist(mediaId) {
+  const { data } = await api.delete(`/watchlist/${mediaId}`);
+  return data;
+}
+
 // ─── Indexing ───────────────────────────────────────
 export async function triggerIndex() {
   const { data } = await api.post('/index');
@@ -97,6 +113,27 @@ export async function triggerIndex() {
 
 export async function getIndexStatus() {
   const { data } = await api.get('/index/status');
+  return data;
+}
+
+// ─── Requests ───────────────────────────────────────
+export async function searchTmdb(query) {
+  const { data } = await api.get('/requests/search', { params: { q: query } });
+  return data;
+}
+
+export async function createMediaRequest(requestData) {
+  const { data } = await api.post('/requests', requestData);
+  return data;
+}
+
+export async function getMediaRequests() {
+  const { data } = await api.get('/requests');
+  return data;
+}
+
+export async function deleteMediaRequest(id) {
+  const { data } = await api.delete(`/requests/${id}`);
   return data;
 }
 

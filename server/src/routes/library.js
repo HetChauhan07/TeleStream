@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import Media from '../models/Media.js';
 import WatchProgress from '../models/WatchProgress.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { getTelegramClient } from '../services/telegram.js';
 
 const router = Router();
 
@@ -10,7 +12,7 @@ const router = Router();
  */
 router.get('/', async (req, res) => {
   try {
-    const { q, genre, sort = 'addedAt', order = 'desc', limit = 100, skip = 0 } = req.query;
+    const { q, genre, type, sort = 'addedAt', order = 'desc', limit = 1000, skip = 0 } = req.query;
 
     let matchQuery = {};
 
@@ -23,6 +25,11 @@ router.get('/', async (req, res) => {
     // Genre filter
     if (genre) {
       matchQuery.genres = genre;
+    }
+    
+    // Type filter
+    if (type) {
+      matchQuery.type = type;
     }
 
     // Sort config
@@ -165,6 +172,42 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     console.error('Library detail error:', err.message);
     res.status(500).json({ error: 'Failed to fetch media details' });
+  }
+});
+
+/**
+ * DELETE /api/library/:id
+ * Admin only: Deletes a media item from the database AND from the Telegram channel.
+ */
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const mediaId = req.params.id;
+    const media = await Media.findById(mediaId);
+    
+    if (!media) {
+      return res.status(404).json({ error: 'Media not found' });
+    }
+
+    // 1. Delete from Telegram
+    try {
+      const client = getTelegramClient();
+      await client.deleteMessages(media.telegramChannelId, [media.telegramMessageId], { revoke: true });
+    } catch (tgErr) {
+      console.error('Failed to delete from Telegram:', tgErr.message);
+      // We continue even if Telegram deletion fails (e.g. message already deleted or channel inaccessible)
+      // so we don't leave orphaned data in the DB.
+    }
+
+    // 2. Delete from DB
+    await Media.findByIdAndDelete(mediaId);
+
+    // 3. Cleanup watch progress
+    await WatchProgress.deleteMany({ mediaId: mediaId });
+
+    res.json({ success: true, message: 'Media deleted from Telegram and database.' });
+  } catch (err) {
+    console.error('Delete media error:', err.message);
+    res.status(500).json({ error: 'Failed to delete media' });
   }
 });
 

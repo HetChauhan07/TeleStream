@@ -1,4 +1,4 @@
-# ⚡ TeleStream
+# TeleStream
 
 A private, self-hosted Netflix-style media streaming app that uses **Telegram as unlimited storage** and **Node.js** as a streaming proxy.
 
@@ -20,12 +20,12 @@ A private, self-hosted Netflix-style media streaming app that uses **Telegram as
 
 ## Features
 
-- 🎬 **Telegram CDN** — Store movies in a private Telegram channel (up to 4GB per file)
-- 🎥 **HTTP 206 Streaming** — Seek to any position instantly (no full download required)
-- 🎭 **TMDB Metadata** — Auto-fetches posters, ratings, cast, and more
-- 📊 **Watch Progress** — Resume from where you left off
-- 🔍 **Search & Filter** — Browse by genre, sort by rating/date/title
-- 🌙 **Premium Dark UI** — Netflix/Jellyfin-style glassmorphism design
+- **Telegram CDN** — Store movies in a private Telegram channel (up to 4GB per file)
+- **HTTP 206 Streaming** — Seek to any position instantly (no full download required)
+- **TMDB Metadata** — Auto-fetches posters, ratings, cast, and more
+- **Watch Progress** — Resume from where you left off
+- **Search & Filter** — Browse by genre, sort by rating/date/title
+- **Premium Dark UI** — Netflix/Jellyfin-style glassmorphism design
 
 ## Prerequisites
 

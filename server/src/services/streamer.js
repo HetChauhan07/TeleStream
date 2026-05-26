@@ -189,7 +189,7 @@ export async function streamMedia(media, req, res) {
       return res.end();
     }
 
-    // INCREASED to 5MB chunk. Less browser requests = fewer Telegram rate limits.
+     
     const CHUNK_SIZE = 5 * 1024 * 1024;
     const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + CHUNK_SIZE - 1, fileSize - 1); 
     const chunkSize = end - start + 1;

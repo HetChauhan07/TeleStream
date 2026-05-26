@@ -13,6 +13,8 @@ import libraryRoutes from './routes/library.js';
 import progressRoutes from './routes/progress.js';
 import indexRoutes from './routes/indexRoutes.js';
 import authRoutes from './routes/auth.js';
+import watchlistRoutes from './routes/watchlist.js';
+import requestRoutes from './routes/requests.js';
 
 
 const app = express();
@@ -46,6 +48,8 @@ app.use('/api/stream', streamRoutes); // handles its own auth (query param token
 app.use('/api/library', requireAuth, libraryRoutes);
 app.use('/api/progress', requireAuth, progressRoutes);
 app.use('/api/index', requireAuth, indexRoutes);
+app.use('/api/watchlist', requireAuth, watchlistRoutes);
+app.use('/api/requests', requireAuth, requestRoutes);
 
 
 // Health check (public)

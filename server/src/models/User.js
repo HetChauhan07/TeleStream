@@ -20,6 +20,10 @@ const userSchema = new mongoose.Schema({
     enum: ['admin', 'user'],
     default: 'user',
   },
+  watchlist: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Media',
+  }],
   createdAt: {
     type: Date,
     default: Date.now,

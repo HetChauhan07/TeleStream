@@ -1,6 +1,7 @@
 import { getTelegramClient } from './telegram.js';
 import { searchMedia, getMediaDetails, getEpisodeDetails, parseFileName } from './tmdb.js';
 import Media from '../models/Media.js';
+import MediaRequest from '../models/MediaRequest.js';
 
 const VIDEO_MIMES = [
   'video/mp4',
@@ -243,6 +244,10 @@ export async function indexChannel() {
           await Media.create(mediaPayload);
           added++;
           console.log(`  Indexed: "${title}"${seasonNumber ? ` S${seasonNumber}E${episodeNumber}` : partNumber ? ` Pt${partNumber}` : ''}`);
+          
+          if (metadata.tmdbId) {
+            await MediaRequest.deleteMany({ tmdbId: metadata.tmdbId });
+          }
         }
 
         // Small delay to avoid rate limits
