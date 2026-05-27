@@ -4,7 +4,8 @@ import { getMediaById, getStreamUrl, getProgress, updateProgress } from '../api/
 import mpegts from 'mpegts.js';
 import { 
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, 
-  ArrowLeft, List, RotateCcw, RotateCw, Search, X, HelpCircle
+  ArrowLeft, List, RotateCcw, RotateCw, Search, X, HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -109,7 +110,10 @@ export default function PlayerPage() {
           enableWorker: true,
           lazyLoad: true,
           lazyLoadMaxDuration: 30,
-          seekType: 'range'
+          seekType: 'range',
+          accurateSeek: true,
+          enableStashBuffer: false,
+          liveBufferLatencyChasing: true
         });
         player.attachMediaElement(videoRef.current);
         player.load();
@@ -224,11 +228,11 @@ export default function PlayerPage() {
           break;
         case 'arrowleft':
           e.preventDefault();
-          seekRelative(-10);
+          seekRelative(-10, false);
           break;
         case 'arrowright':
           e.preventDefault();
-          seekRelative(10);
+          seekRelative(10, false);
           break;
         case 'arrowup':
           e.preventDefault();
@@ -276,22 +280,41 @@ export default function PlayerPage() {
   // Controls auto-hide timer
   useEffect(() => {
     let timeout;
-    const handleMouseMove = () => {
-      setShowControls(true);
-      clearTimeout(timeout);
+    
+    const resetTimer = () => {
+      if (timeout) clearTimeout(timeout);
       timeout = setTimeout(() => {
         if (isPlaying && !showEpisodes && !showSpeedMenu && !isMouseDownScrubber && !isDraggingVolume && !showShortcuts && !countdownActive) {
           setShowControls(false);
         }
-      }, 4000);
+      }, 1500);
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
+
+    if (showControls) {
+      resetTimer();
+    }
+
+    const handleActivity = (e) => {
+      if (e && e.type === 'touchstart' && !showControls) {
+        return;
+      }
+      if (!showControls) {
+        setShowControls(true);
+      }
+      resetTimer();
+    };
+
+    document.addEventListener('mousemove', handleActivity);
+    document.addEventListener('keydown', handleActivity);
+    document.addEventListener('touchstart', handleActivity);
+
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
+      document.removeEventListener('mousemove', handleActivity);
+      document.removeEventListener('keydown', handleActivity);
+      document.removeEventListener('touchstart', handleActivity);
     };
-  }, [isPlaying, showEpisodes, showSpeedMenu, isMouseDownScrubber, isDraggingVolume, showShortcuts, countdownActive]);
+  }, [showControls, isPlaying, showEpisodes, showSpeedMenu, isMouseDownScrubber, isDraggingVolume, showShortcuts, countdownActive]);
 
   // Next Episode Selector
   const nextMedia = useMemo(() => {
@@ -402,13 +425,15 @@ export default function PlayerPage() {
     }
   };
 
-  const seekRelative = (seconds) => {
+  const seekRelative = (seconds, showIndicator = true) => {
     if (videoRef.current) {
       const newTime = Math.max(0, Math.min(videoRef.current.currentTime + seconds, duration));
       videoRef.current.currentTime = newTime;
       setCurrentTime(newTime);
       setProgress((newTime / duration) * 100);
-      triggerGestureIndicator(seconds > 0 ? 'forward' : 'backward');
+      if (showIndicator) {
+        triggerGestureIndicator(seconds > 0 ? 'forward' : 'backward');
+      }
     }
   };
 
@@ -433,6 +458,24 @@ export default function PlayerPage() {
       volumeHudTimeout.current = setTimeout(() => {
         setVolumeHud(prev => ({ ...prev, visible: false }));
       }, 1500);
+    }
+  };
+
+  const resyncAudio = () => {
+    if (videoRef.current) {
+      const time = videoRef.current.currentTime;
+      videoRef.current.pause();
+      videoRef.current.currentTime = Math.max(0, time - 0.1);
+      
+      triggerGestureIndicator('sync');
+      
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.play().then(() => {
+            setIsPlaying(true);
+          }).catch(console.error);
+        }
+      }, 100);
     }
   };
 
@@ -505,7 +548,7 @@ export default function PlayerPage() {
       toggleFullscreen();
     } else {
       clickTimeout.current = setTimeout(() => {
-        togglePlay();
+        setShowControls(prev => !prev);
         clickTimeout.current = null;
       }, 250);
     }
@@ -536,11 +579,7 @@ export default function PlayerPage() {
     } else {
       lastTapRef.current = now;
       touchTimeoutRef.current = setTimeout(() => {
-        if (!showControls) {
-          setShowControls(true);
-        } else {
-          togglePlay();
-        }
+        setShowControls(prev => !prev);
         touchTimeoutRef.current = null;
       }, 250);
     }
@@ -735,6 +774,7 @@ export default function PlayerPage() {
             {gesture.type === 'pause' && <Pause size={36} fill="white" />}
             {gesture.type === 'forward' && <RotateCw size={36} />}
             {gesture.type === 'backward' && <RotateCcw size={36} />}
+            {gesture.type === 'sync' && <RefreshCw size={36} className="animate-spin" />}
           </motion.div>
         )}
       </AnimatePresence>
@@ -943,6 +983,11 @@ export default function PlayerPage() {
                       <List size={20} /> Episodes
                     </button>
                   )}
+
+                  {/* Sync Audio */}
+                  <button onClick={resyncAudio} className="player-ctrl-btn" title="Sync Audio/Video">
+                    <RefreshCw size={20} />
+                  </button>
 
                   {/* Fullscreen toggle */}
                   <button onClick={toggleFullscreen} className="player-ctrl-btn" title="Fullscreen">
