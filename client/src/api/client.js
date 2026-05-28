@@ -61,6 +61,10 @@ export function getStreamUrl(id, options = {}) {
   if (options.start) {
     url += `&start=${Math.floor(options.start)}`;
   }
+
+  if (options.transcode) {
+    url += `&transcode=true`;
+  }
   
   return url;
 }

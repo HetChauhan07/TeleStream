@@ -62,6 +62,37 @@ export default function PlayerPage() {
   const [countdownActive, setCountdownActive] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(10);
 
+  // Transcoded seek handling state
+  const [streamStartOffset, setStreamStartOffset] = useState(0);
+
+  const isIOS = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }, []);
+
+  const isTranscoded = useMemo(() => {
+    if (!movie) return false;
+    const nativeMimes = ['video/mp4', 'video/webm', 'video/ogg', 'video/mp2t'];
+    let needsTranscode = !nativeMimes.includes(movie.mimeType);
+    if (movie.mimeType === 'video/mp2t' && isIOS) {
+      needsTranscode = true;
+    }
+    return needsTranscode;
+  }, [movie, isIOS]);
+
+  const videoSrc = useMemo(() => {
+    if (!movie) return '';
+    const options = {};
+    if (isTranscoded) {
+      options.transcode = true;
+      if (streamStartOffset > 0) {
+        options.start = streamStartOffset;
+      }
+    }
+    return getStreamUrl(id, options);
+  }, [movie, id, isTranscoded, streamStartOffset]);
+
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
@@ -76,6 +107,7 @@ export default function PlayerPage() {
       setLoading(true);
       setInitialSeekDone(false);
       setCountdownActive(false);
+      setStreamStartOffset(0); // Reset stream offset for new video
       try {
         const movieData = await getMediaById(id);
         setMovie(movieData);
@@ -98,7 +130,7 @@ export default function PlayerPage() {
   // MSE mpegts player setup
   useEffect(() => {
     let player = null;
-    if (movie && movie.mimeType === 'video/mp2t' && videoRef.current) {
+    if (movie && movie.mimeType === 'video/mp2t' && videoRef.current && !isIOS) {
       if (mpegts.getFeatureList().mseLivePlayback) {
         player = mpegts.createPlayer({
           type: 'm2ts',
@@ -125,19 +157,20 @@ export default function PlayerPage() {
         player.destroy();
       }
     };
-  }, [movie, id]);
+  }, [movie, id, isIOS]);
 
   // Restore Watch Progress
   useEffect(() => {
     if (movie && videoRef.current && !initialSeekDone && duration > 0) {
       getProgress(id).then(prog => {
         if (prog && prog.currentTime > 5 && prog.currentTime < duration - 10) {
-          videoRef.current.currentTime = Math.max(0, prog.currentTime - 3);
+          const seekTime = Math.max(0, prog.currentTime - 3);
+          performSeek(seekTime);
         }
         setInitialSeekDone(true);
       }).catch(console.error);
     }
-  }, [movie, id, initialSeekDone, duration]);
+  }, [movie, id, initialSeekDone, duration, isTranscoded]);
 
   // Sync Watch Progress
   useEffect(() => {
@@ -403,10 +436,37 @@ export default function PlayerPage() {
   };
 
   // Video Events
+  function performSeek(seekTime) {
+    if (isTranscoded) {
+      setStreamStartOffset(seekTime);
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+      }
+    } else {
+      if (videoRef.current) {
+        videoRef.current.currentTime = seekTime;
+      }
+    }
+    setCurrentTime(seekTime);
+    setProgress((seekTime / duration) * 100);
+  }
+
+  const handleSeeked = () => {
+    if (isTranscoded && videoRef.current) {
+      const targetTime = videoRef.current.currentTime;
+      if (Math.abs(targetTime) > 1.5) {
+        const absoluteSeekTime = streamStartOffset + targetTime;
+        setStreamStartOffset(absoluteSeekTime);
+        videoRef.current.currentTime = 0;
+      }
+    }
+  };
+
   const handleTimeUpdate = () => {
     if (videoRef.current && !isMouseDownScrubber) {
-      setCurrentTime(videoRef.current.currentTime);
-      setProgress((videoRef.current.currentTime / videoRef.current.duration) * 100);
+      const actualTime = isTranscoded ? (streamStartOffset + videoRef.current.currentTime) : videoRef.current.currentTime;
+      setCurrentTime(actualTime);
+      setProgress((actualTime / videoRef.current.duration) * 100);
     }
   };
 
@@ -452,10 +512,9 @@ export default function PlayerPage() {
 
   const seekRelative = (seconds, showIndicator = true) => {
     if (videoRef.current) {
-      const newTime = Math.max(0, Math.min(videoRef.current.currentTime + seconds, duration));
-      videoRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-      setProgress((newTime / duration) * 100);
+      const currentAbsoluteTime = isTranscoded ? (streamStartOffset + videoRef.current.currentTime) : videoRef.current.currentTime;
+      const newAbsoluteTime = Math.max(0, Math.min(currentAbsoluteTime + seconds, duration));
+      performSeek(newAbsoluteTime);
       if (showIndicator) {
         triggerGestureIndicator(seconds > 0 ? 'forward' : 'backward');
       }
@@ -548,11 +607,7 @@ export default function PlayerPage() {
     const percentage = x / rect.width;
     const seekTime = percentage * duration;
     
-    if (videoRef.current) {
-      videoRef.current.currentTime = seekTime;
-    }
-    setCurrentTime(seekTime);
-    setProgress(percentage * 100);
+    performSeek(seekTime);
   };
 
   const handleScrubberMouseDown = (e) => {
@@ -777,7 +832,7 @@ export default function PlayerPage() {
     );
   }
 
-  const isMpegTS = movie?.mimeType === 'video/mp2t';
+  const isMpegTS = movie?.mimeType === 'video/mp2t' && !isIOS;
   const hasEpisodes = movie?.type === 'tv' && movie.episodes && movie.episodes.length > 1;
 
   return (
@@ -787,7 +842,7 @@ export default function PlayerPage() {
     >
       <video
         ref={videoRef}
-        src={isMpegTS ? undefined : getStreamUrl(id)}
+        src={isMpegTS ? undefined : videoSrc}
         autoPlay
         playsInline
         onTimeUpdate={handleTimeUpdate}
@@ -797,6 +852,7 @@ export default function PlayerPage() {
         onPause={() => setIsPlaying(false)}
         onClick={handleVideoClick}
         onTouchEnd={handleVideoTouch}
+        onSeeked={handleSeeked}
         className="custom-player-video"
         style={{ cursor: showControls ? 'default' : 'none' }}
       >

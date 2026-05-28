@@ -74,7 +74,12 @@ export async function streamMedia(media, req, res) {
     const startOffset = req.query.start; 
     const isDownload = req.query.download === 'true';
 
+    const ua = req.headers['user-agent'] || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && req.headers['sec-ch-ua-mobile'] === '?1');
+
     let needsTranscode = !SUPPORTED_NATIVE_MIMES.includes(mimeType) && media.type !== 'subtitle' && !fileNameIsSub(media.fileName);
+    if (mimeType === 'video/mp2t' && isIOS) needsTranscode = true;
+    if (req.query.transcode === 'true') needsTranscode = true;
     if (quality && quality !== 'original' && media.type !== 'subtitle') needsTranscode = true;
 
     // ─── FFmpeg Transcode Pipeline ───
