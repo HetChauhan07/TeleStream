@@ -269,13 +269,38 @@ export default function PlayerPage() {
   // Sync fullscreen state with native browser fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(!!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement
+      ));
     };
+
+    const handleWebKitBeginFullscreen = () => {
+      setIsFullscreen(true);
+    };
+
+    const handleWebKitEndFullscreen = () => {
+      setIsFullscreen(false);
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener('webkitbeginfullscreen', handleWebKitBeginFullscreen);
+      video.addEventListener('webkitendfullscreen', handleWebKitEndFullscreen);
+    }
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      if (video) {
+        video.removeEventListener('webkitbeginfullscreen', handleWebKitBeginFullscreen);
+        video.removeEventListener('webkitendfullscreen', handleWebKitEndFullscreen);
+      }
     };
-  }, []);
+  }, [loading, id]);
 
   // Controls auto-hide timer
   useEffect(() => {
@@ -480,11 +505,37 @@ export default function PlayerPage() {
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(console.error);
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container || !video) return;
+
+    const isCurrentlyFullscreen = !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      video.webkitDisplayingFullscreen
+    );
+
+    if (!isCurrentlyFullscreen) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch((err) => {
+          if (video.webkitEnterFullscreen) {
+            video.webkitEnterFullscreen();
+          } else {
+            console.error('Fullscreen request failed:', err);
+          }
+        });
+      } else if (video.webkitEnterFullscreen) {
+        video.webkitEnterFullscreen();
+      } else if (video.requestFullscreen) {
+        video.requestFullscreen().catch(console.error);
+      }
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(console.error);
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (video.webkitExitFullscreen) {
+        video.webkitExitFullscreen();
       }
     }
   };
