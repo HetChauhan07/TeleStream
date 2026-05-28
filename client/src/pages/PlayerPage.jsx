@@ -496,16 +496,16 @@ export default function PlayerPage() {
   };
 
   // Playback Control Handlers
-  const togglePlay = () => {
+  const togglePlay = (showIndicator = true) => {
     if (videoRef.current) {
       if (videoRef.current.paused) {
         videoRef.current.play();
         setIsPlaying(true);
-        triggerGestureIndicator('play');
+        if (showIndicator) triggerGestureIndicator('play');
       } else {
         videoRef.current.pause();
         setIsPlaying(false);
-        triggerGestureIndicator('pause');
+        if (showIndicator) triggerGestureIndicator('pause');
       }
     }
   };
@@ -1001,7 +1001,7 @@ export default function PlayerPage() {
               <div className="player-controls-row">
                 <div className="player-controls-left">
                   {/* Play / Pause */}
-                  <button onClick={togglePlay} className="player-ctrl-btn" title={isPlaying ? "Pause" : "Play"}>
+                  <button onClick={() => togglePlay(false)} className="player-ctrl-btn" title={isPlaying ? "Pause" : "Play"}>
                     {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="white" />}
                   </button>
 
